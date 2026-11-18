@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApiApp } from './server/app.ts';
@@ -9,13 +10,41 @@ const PORT = Number(process.env.PORT) || 3000;
 
 async function startServer(): Promise<void> {
   const app = createApiApp();
+  const httpServer = http.createServer(app);
 
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        ws:
+          process.env.DISABLE_HMR === 'true'
+            ? false
+            : { server: httpServer },
+        hmr: process.env.DISABLE_HMR !== 'true',
+      },
       appType: 'spa',
     });
+
+    if (vite.config.server.hmr === false || vite.config.server.ws === false) {
+      app.get('/@vite/client', async (_req: Request, res: Response, next) => {
+        try {
+          const result = await vite.transformRequest('/@vite/client');
+          if (!result) {
+            next();
+            return;
+          }
+          const patched = result.code.replace(
+            'transport.connect(createHMRHandler(handleMessage));',
+            '/* HMR disabled: skip WebSocket connection */'
+          );
+          res.type('application/javascript').send(patched);
+        } catch (err) {
+          next(err);
+        }
+      });
+    }
+
     app.use(vite.middlewares);
   } else {
     const distDir = path.join(__dirname, 'dist');
@@ -25,7 +54,7 @@ async function startServer(): Promise<void> {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Aluminum Workshop Hub running on http://0.0.0.0:${PORT}`);
   });
 }
