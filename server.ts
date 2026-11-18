@@ -35,8 +35,8 @@ async function startServer(): Promise<void> {
             return;
           }
           const patched = result.code.replace(
-            'transport.connect(createHMRHandler(handleMessage));',
-            '/* HMR disabled: skip WebSocket connection */'
+            /let wsTransport = createWebSocketModuleRunnerTransport\(\{[\s\S]*?\}\);/,
+            'let wsTransport = { connect: async () => {}, disconnect: async () => {}, send: () => {} };'
           );
           res.type('application/javascript').send(patched);
         } catch (err) {
