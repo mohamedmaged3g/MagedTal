@@ -1,22 +1,42 @@
-import React, { useState } from 'react';
-import { ShieldCheck, X } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { AlertTriangle, Eye, EyeOff, ShieldCheck, X } from 'lucide-react';
 
 interface AdminLoginModalProps {
   isOpen: boolean;
+  usingDefaultPassword?: boolean;
   onClose: () => void;
   onLogin: (password: string) => Promise<void>;
 }
 
 export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   isOpen,
+  usingDefaultPassword,
   onClose,
   onLogin,
 }) => {
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [capsLockOn, setCapsLockOn] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (isOpen) {
+      setError(null);
+      setShowPassword(false);
+      setCapsLockOn(false);
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
+
+  const hasArabicChars = /[\u0600-\u06FF]/.test(password);
+
+  const handleKeyCheck = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (typeof e.getModifierState === 'function') {
+      setCapsLockOn(e.getModifierState('CapsLock'));
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,7 +99,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           {error && (
-            <div className="p-3 text-xs font-medium text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900 rounded-lg">
+            <div className="p-3 text-xs font-medium text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900 rounded-lg leading-relaxed">
               {error}
             </div>
           )}
@@ -91,26 +111,78 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
             >
               كلمة مرور الإدارة
             </label>
-            <input
-              id="admin-password-input"
-              type="password"
-              autoFocus
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="أدخل كلمة مرور لوحة التحكم"
-              className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white dark:focus:bg-slate-950"
-            />
+            <div className="relative">
+              <input
+                id="admin-password-input"
+                type={showPassword ? 'text' : 'password'}
+                dir="ltr"
+                autoComplete="current-password"
+                autoFocus
+                required
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (error) setError(null);
+                }}
+                onKeyDown={handleKeyCheck}
+                onKeyUp={handleKeyCheck}
+                placeholder="أدخل كلمة مرور لوحة التحكم"
+                className="w-full pl-3.5 pr-10 py-2.5 text-sm text-right bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white dark:focus:bg-slate-950"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
+                className="absolute inset-y-0 right-2 flex items-center px-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+              >
+                {showPassword ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
+              </button>
+            </div>
+
+            {(hasArabicChars || capsLockOn) && (
+              <div className="mt-2 space-y-1">
+                {hasArabicChars && (
+                  <p className="flex items-center gap-1.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    <span>
+                      لوحة المفاتيح تكتب باللغة العربية حالياً — تأكد من التحويل للغة الإنجليزية إذا كانت كلمة المرور بحروف أو أرقام إنجليزية.
+                    </span>
+                  </p>
+                )}
+                {capsLockOn && (
+                  <p className="flex items-center gap-1.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    <span>مفتاح الأحرف الكبيرة (Caps Lock) مفعل حالياً.</span>
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex items-start gap-2 p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
             <ShieldCheck className="w-4 h-4 text-blue-700 dark:text-blue-400 shrink-0 mt-0.5" />
             <span>
-              يتم التحقق عبر الخادم مع جلسة آمنة، ويمكنك تغيير كلمة المرور في أي وقت عبر متغير{' '}
-              <code className="font-mono text-slate-800 dark:text-slate-200">
-                ADMIN_PASSWORD
-              </code>{' '}
-              في إعدادات Vercel.
+              {usingDefaultPassword === false ? (
+                <>
+                  كلمة المرور المفعّلة حالياً مأخوذة من متغير{' '}
+                  <code className="font-mono text-slate-800 dark:text-slate-200">
+                    ADMIN_PASSWORD
+                  </code>{' '}
+                  في إعدادات البيئة (Secrets / Vercel) وليست كلمة المرور الافتراضية. يمكنك مراجعتها أو تحديثها من إعدادات المتغيرات البيئية.
+                </>
+              ) : (
+                <>
+                  يتم التحقق عبر الخادم مع جلسة آمنة، ويمكنك تعيين أو تغيير كلمة المرور في أي وقت عبر متغير{' '}
+                  <code className="font-mono text-slate-800 dark:text-slate-200">
+                    ADMIN_PASSWORD
+                  </code>{' '}
+                  في إعدادات البيئة (Secrets / Vercel).
+                </>
+              )}
             </span>
           </div>
 

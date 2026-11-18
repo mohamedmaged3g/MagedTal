@@ -20,10 +20,26 @@ const FB_PAGE_URL = `https://www.facebook.com/profile.php?id=${FB_PAGE_ID}`;
 const FB_VERIFY_TOKEN =
   process.env.FB_VERIFY_TOKEN || 'aluminum_workshop_webhook_verify';
 
+function stripBidiAndTrim(value: string): string {
+  return value.replace(/[\u200B-\u200F\u202A-\u202E\uFEFF]/g, '').trim();
+}
+
+function resolveEnvPassword(raw: string | undefined): string {
+  const cleaned = stripBidiAndTrim(raw || '');
+  if (
+    cleaned.length >= 2 &&
+    ((cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+      (cleaned.startsWith("'") && cleaned.endsWith("'")))
+  ) {
+    return cleaned.slice(1, -1).trim();
+  }
+  return cleaned;
+}
+
 const DEFAULT_ADMIN_PASSWORD = 'MagedTal@2026';
-const ADMIN_PASSWORD =
-  (process.env.ADMIN_PASSWORD || '').trim() || DEFAULT_ADMIN_PASSWORD;
-const USING_DEFAULT_PASSWORD = !(process.env.ADMIN_PASSWORD || '').trim();
+const CONFIGURED_ADMIN_PASSWORD = resolveEnvPassword(process.env.ADMIN_PASSWORD);
+const ADMIN_PASSWORD = CONFIGURED_ADMIN_PASSWORD || DEFAULT_ADMIN_PASSWORD;
+const USING_DEFAULT_PASSWORD = !CONFIGURED_ADMIN_PASSWORD;
 const SESSION_SECRET =
   (process.env.SESSION_SECRET || '').trim() ||
   crypto
@@ -358,13 +374,20 @@ export function createApiApp(): Express {
     }
 
     const { password } = req.body as { password?: string };
-    if (!password || typeof password !== 'string') {
+    const normalizedInput =
+      typeof password === 'string' ? stripBidiAndTrim(password) : '';
+    if (!normalizedInput) {
       res.status(400).json({ error: 'يرجى إدخال كلمة مرور الإدارة' });
       return;
     }
 
-    if (!timingSafeMatch(password.trim(), ADMIN_PASSWORD)) {
-      res.status(401).json({ error: 'كلمة المرور غير صحيحة' });
+    if (!timingSafeMatch(normalizedInput, ADMIN_PASSWORD)) {
+      res.status(401).json({
+        error: USING_DEFAULT_PASSWORD
+          ? 'كلمة المرور غير صحيحة'
+          : 'كلمة المرور غير صحيحة (يتم التحقق حالياً باستخدام كلمة المرور المخصصة في متغير ADMIN_PASSWORD)',
+        usingDefaultPassword: USING_DEFAULT_PASSWORD,
+      });
       return;
     }
 

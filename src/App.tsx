@@ -474,6 +474,13 @@ export default function App() {
     };
 
     if (!res.ok || !data.ok || !data.token) {
+      if (typeof data.usingDefaultPassword === 'boolean') {
+        setAuthStatus((prev) => ({
+          authenticated: false,
+          usingDefaultPassword: data.usingDefaultPassword!,
+          persistentDbConfigured: prev?.persistentDbConfigured ?? false,
+        }));
+      }
       throw new Error(data.error || 'كلمة المرور غير صحيحة');
     }
 
@@ -535,6 +542,7 @@ export default function App() {
         />
         <AdminLoginModal
           isOpen={loginModalOpen}
+          usingDefaultPassword={authStatus?.usingDefaultPassword}
           onClose={() => {
             setLoginModalOpen(false);
             setPendingNav(null);
