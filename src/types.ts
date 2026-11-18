@@ -14,6 +14,8 @@ export type OrderStage =
 
 export type OrderSource = 'facebook' | 'shop' | 'direct';
 
+export type ProfileCategory = 'aluminum' | 'upvc';
+
 export type InquiryStatus = 'new' | 'replied' | 'converted';
 
 export interface WorkshopTool {
@@ -34,6 +36,7 @@ export interface WorkshopOrder {
   clientName: string;
   clientPhone: string;
   source: OrderSource;
+  profileType: ProfileCategory;
   projectType: string;
   dimensionsNote: string;
   stage: OrderStage;
@@ -56,10 +59,12 @@ export interface FacebookMessage {
 
 export interface FacebookInquiry {
   id: string;
+  referenceCode?: string;
   psid?: string;
   conversationId?: string;
   customerName: string;
   customerPhone?: string;
+  profileType?: ProfileCategory;
   projectInterest: string;
   status: InquiryStatus;
   sourceType: 'webhook' | 'graph_api' | 'manual';
@@ -67,6 +72,18 @@ export interface FacebookInquiry {
   messages: FacebookMessage[];
   updatedAt: string;
   createdAt: string;
+}
+
+export interface QuoteTrackingResult {
+  referenceCode: string;
+  profileTypeLabel?: string;
+  projectInterest: string;
+  status: InquiryStatus;
+  statusLabel: string;
+  linkedOrderCode?: string;
+  linkedOrderStageLabel?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface FacebookStatusResponse {

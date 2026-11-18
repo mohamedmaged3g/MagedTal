@@ -13,11 +13,17 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { FACEBOOK_PAGE_ID, FACEBOOK_PAGE_URL } from '../data/tools.ts';
+import {
+  FACEBOOK_PAGE_ID,
+  FACEBOOK_PAGE_URL,
+  PROFILE_TYPES,
+  getProfileTypeLabel,
+} from '../data/tools.ts';
 import type {
   FacebookInquiry,
   FacebookStatusResponse,
   InquiryStatus,
+  ProfileCategory,
 } from '../types.ts';
 
 interface FacebookInboxViewProps {
@@ -29,9 +35,10 @@ interface FacebookInboxViewProps {
   onCreateInquiry: (payload: {
     customerName: string;
     customerPhone: string;
+    profileType?: ProfileCategory;
     projectInterest: string;
     initialMessage: string;
-  }) => Promise<void>;
+  }) => Promise<unknown>;
   onSendReply: (inquiryId: string, text: string) => Promise<{
     sentViaGraphApi?: boolean;
     graphWarning?: string;
@@ -67,6 +74,7 @@ export const FacebookInboxView: React.FC<FacebookInboxViewProps> = ({
   const [showAddModal, setShowAddModal] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState('');
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
+  const [newProfileType, setNewProfileType] = useState<ProfileCategory>('aluminum');
   const [newProjectInterest, setNewProjectInterest] = useState('مطبخ ألومنيوم');
   const [newMessage, setNewMessage] = useState('');
   const [creating, setCreating] = useState(false);
@@ -123,11 +131,14 @@ export const FacebookInboxView: React.FC<FacebookInboxViewProps> = ({
       await onCreateInquiry({
         customerName: newCustomerName.trim(),
         customerPhone: newCustomerPhone.trim(),
+        profileType: newProfileType,
         projectInterest: newProjectInterest.trim(),
         initialMessage: newMessage.trim(),
       });
       setNewCustomerName('');
       setNewCustomerPhone('');
+      setNewProfileType('aluminum');
+      setNewProjectInterest('مطبخ ألومنيوم');
       setNewMessage('');
       setShowAddModal(false);
     } finally {
@@ -337,6 +348,11 @@ export const FacebookInboxView: React.FC<FacebookInboxViewProps> = ({
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-semibold text-sm text-slate-900 dark:text-slate-100 truncate">
+                        {inq.referenceCode && (
+                          <span className="ml-1.5 font-mono text-[11px] text-blue-700 dark:text-blue-400">
+                            {inq.referenceCode}
+                          </span>
+                        )}
                         {inq.customerName}
                       </span>
                       <span className="text-[11px] font-mono tabular-nums text-slate-400 dark:text-slate-500 shrink-0">
@@ -345,7 +361,21 @@ export const FacebookInboxView: React.FC<FacebookInboxViewProps> = ({
                     </div>
 
                     <div className="mt-1 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                      <span>{inq.projectInterest}</span>
+                      {inq.profileType && (
+                        <>
+                          <span
+                            className={
+                              inq.profileType === 'upvc'
+                                ? 'font-mono font-semibold text-blue-700 dark:text-blue-400'
+                                : 'font-medium text-slate-600 dark:text-slate-300'
+                            }
+                          >
+                            {getProfileTypeLabel(inq.profileType)}
+                          </span>
+                          <span aria-hidden="true">·</span>
+                        </>
+                      )}
+                      <span className="truncate">{inq.projectInterest}</span>
                       <span aria-hidden="true">·</span>
                       <span
                         className={
@@ -392,8 +422,21 @@ export const FacebookInboxView: React.FC<FacebookInboxViewProps> = ({
                 <div>
                   <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
                     {activeInquiry.customerName}
+                    {activeInquiry.referenceCode && (
+                      <span className="mr-2 font-mono text-xs font-semibold text-blue-700 dark:text-blue-400">
+                        ({activeInquiry.referenceCode})
+                      </span>
+                    )}
                   </h2>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    {activeInquiry.profileType && (
+                      <>
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">
+                          {getProfileTypeLabel(activeInquiry.profileType)}
+                        </span>
+                        {' · '}
+                      </>
+                    )}
                     {activeInquiry.projectInterest}
                     {activeInquiry.customerPhone && (
                       <>
@@ -563,17 +606,47 @@ export const FacebookInboxView: React.FC<FacebookInboxViewProps> = ({
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                  نوع الطلب
-                </label>
-                <input
-                  type="text"
-                  value={newProjectInterest}
-                  onChange={(e) => setNewProjectInterest(e.target.value)}
-                  placeholder="مطبخ كلادينج / شبابيك جرار..."
-                  className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                    نوع القطاع
+                  </label>
+                  <select
+                    value={newProfileType}
+                    onChange={(e) => {
+                      const next = e.target.value as ProfileCategory;
+                      setNewProfileType(next);
+                      if (next === 'upvc' && newProjectInterest === 'مطبخ ألومنيوم') {
+                        setNewProjectInterest('شبابيك وأبواب UPVC');
+                      } else if (
+                        next === 'aluminum' &&
+                        newProjectInterest === 'شبابيك وأبواب UPVC'
+                      ) {
+                        setNewProjectInterest('مطبخ ألومنيوم');
+                      }
+                    }}
+                    className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  >
+                    {PROFILE_TYPES.map((pt) => (
+                      <option key={pt.id} value={pt.id}>
+                        {pt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                    نوع الطلب
+                  </label>
+                  <input
+                    type="text"
+                    value={newProjectInterest}
+                    onChange={(e) => setNewProjectInterest(e.target.value)}
+                    placeholder="مطبخ كلادينج / شبابيك جرار..."
+                    className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  />
+                </div>
               </div>
 
               <div>

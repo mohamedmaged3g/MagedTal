@@ -1,7 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import { ORDER_STAGES, WORKSHOP_TOOLS } from '../data/tools.ts';
-import type { OrderSource, OrderStage, ToolId, WorkshopOrder } from '../types.ts';
+import { ORDER_STAGES, PROFILE_TYPES, WORKSHOP_TOOLS } from '../data/tools.ts';
+import type {
+  OrderSource,
+  OrderStage,
+  ProfileCategory,
+  ToolId,
+  WorkshopOrder,
+} from '../types.ts';
 
 interface OrderModalProps {
   isOpen: boolean;
@@ -10,6 +16,7 @@ interface OrderModalProps {
     clientName?: string;
     clientPhone?: string;
     source?: OrderSource;
+    profileType?: ProfileCategory;
     projectType?: string;
     dimensionsNote?: string;
     linkedInquiryId?: string;
@@ -20,6 +27,7 @@ interface OrderModalProps {
     clientName: string;
     clientPhone: string;
     source: OrderSource;
+    profileType: ProfileCategory;
     projectType: string;
     dimensionsNote: string;
     stage: OrderStage;
@@ -40,6 +48,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
   const [source, setSource] = useState<OrderSource>('direct');
+  const [profileType, setProfileType] = useState<ProfileCategory>('aluminum');
   const [projectType, setProjectType] = useState('مطبخ ألومنيوم');
   const [dimensionsNote, setDimensionsNote] = useState('');
   const [stage, setStage] = useState<OrderStage>('design_3d');
@@ -56,6 +65,12 @@ export const OrderModal: React.FC<OrderModalProps> = ({
       setClientName(initialOrder.clientName);
       setClientPhone(initialOrder.clientPhone);
       setSource(initialOrder.source);
+      setProfileType(
+        initialOrder.profileType ||
+          (/upvc|يو\s*بي\s*في\s*سي/i.test(initialOrder.projectType)
+            ? 'upvc'
+            : 'aluminum')
+      );
       setProjectType(initialOrder.projectType);
       setDimensionsNote(initialOrder.dimensionsNote);
       setStage(initialOrder.stage);
@@ -63,19 +78,31 @@ export const OrderModal: React.FC<OrderModalProps> = ({
       setTotalCost(String(initialOrder.totalCost));
       setPaidDeposit(String(initialOrder.paidDeposit));
     } else if (prefill) {
+      const inferredProfile =
+        prefill.profileType ||
+        (/upvc|يو\s*بي\s*في\s*سي/i.test(prefill.projectType || '')
+          ? 'upvc'
+          : 'aluminum');
       setClientName(prefill.clientName || '');
       setClientPhone(prefill.clientPhone || '');
       setSource(prefill.source || 'facebook');
-      setProjectType(prefill.projectType || 'مطبخ ألومنيوم');
+      setProfileType(inferredProfile);
+      setProjectType(
+        prefill.projectType ||
+          (inferredProfile === 'upvc' ? 'شبابيك وأبواب UPVC' : 'مطبخ ألومنيوم')
+      );
       setDimensionsNote(prefill.dimensionsNote || '');
-      setStage('design_3d');
-      setActiveToolId('kitchen-3d-studio');
+      setStage(inferredProfile === 'upvc' ? 'takhseem' : 'design_3d');
+      setActiveToolId(
+        inferredProfile === 'upvc' ? 'takhseem-pro' : 'kitchen-3d-studio'
+      );
       setTotalCost('0');
       setPaidDeposit('0');
     } else {
       setClientName('');
       setClientPhone('');
       setSource('direct');
+      setProfileType('aluminum');
       setProjectType('مطبخ ألومنيوم');
       setDimensionsNote('');
       setStage('design_3d');
@@ -86,6 +113,26 @@ export const OrderModal: React.FC<OrderModalProps> = ({
   }, [isOpen, initialOrder, prefill]);
 
   if (!isOpen) return null;
+
+  const handleProfileTypeChange = (nextProfile: ProfileCategory) => {
+    setProfileType(nextProfile);
+    if (!initialOrder) {
+      if (nextProfile === 'upvc' && projectType === 'مطبخ ألومنيوم') {
+        setProjectType('شبابيك وأبواب UPVC');
+      } else if (
+        nextProfile === 'aluminum' &&
+        projectType === 'شبابيك وأبواب UPVC'
+      ) {
+        setProjectType('مطبخ ألومنيوم');
+      }
+      if (nextProfile === 'upvc' && activeToolId === 'kitchen-3d-studio') {
+        setActiveToolId('takhseem-pro');
+        if (stage === 'design_3d') {
+          setStage('takhseem');
+        }
+      }
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,7 +149,10 @@ export const OrderModal: React.FC<OrderModalProps> = ({
         clientName: clientName.trim(),
         clientPhone: clientPhone.trim(),
         source,
-        projectType: projectType.trim() || 'مطبخ ألومنيوم',
+        profileType,
+        projectType:
+          projectType.trim() ||
+          (profileType === 'upvc' ? 'شبابيك وأبواب UPVC' : 'مطبخ ألومنيوم'),
         dimensionsNote: dimensionsNote.trim(),
         stage,
         activeToolId,
@@ -125,8 +175,8 @@ export const OrderModal: React.FC<OrderModalProps> = ({
       aria-modal="true"
       aria-labelledby="order-modal-title"
     >
-      <div className="w-full max-w-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800">
+      <div className="w-full max-w-xl max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 sticky top-0 bg-white dark:bg-slate-900 z-10">
           <h2 id="order-modal-title" className="text-base font-bold text-slate-900 dark:text-slate-100">
             {initialOrder ? `تعديل أمر شغل ${initialOrder.code}` : 'تسجيل أمر شغل جديد'}
           </h2>
@@ -178,6 +228,29 @@ export const OrderModal: React.FC<OrderModalProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
+              <label
+                htmlFor="order-profile-type"
+                className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5"
+              >
+                نوع القطاع
+              </label>
+              <select
+                id="order-profile-type"
+                value={profileType}
+                onChange={(e) =>
+                  handleProfileTypeChange(e.target.value as ProfileCategory)
+                }
+                className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+              >
+                {PROFILE_TYPES.map((pt) => (
+                  <option key={pt.id} value={pt.id}>
+                    {pt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
               <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                 نوع العمل
               </label>
@@ -185,24 +258,9 @@ export const OrderModal: React.FC<OrderModalProps> = ({
                 type="text"
                 value={projectType}
                 onChange={(e) => setProjectType(e.target.value)}
-                placeholder="مطبخ ألوميتال / شبابيك قطاع خاص..."
+                placeholder="مطبخ كلادينج / شبابيك ألومنيوم أو UPVC..."
                 className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
               />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                مصدر العميل
-              </label>
-              <select
-                value={source}
-                onChange={(e) => setSource(e.target.value as OrderSource)}
-                className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
-              >
-                <option value="facebook">صفحة فيسبوك</option>
-                <option value="shop">زيارة المحل</option>
-                <option value="direct">عميل مباشر / هاتف</option>
-              </select>
             </div>
           </div>
 
@@ -226,20 +284,35 @@ export const OrderModal: React.FC<OrderModalProps> = ({
 
             <div>
               <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                البرنامج المرتبط بالتنفيذ
+                مصدر العميل
               </label>
               <select
-                value={activeToolId}
-                onChange={(e) => setActiveToolId(e.target.value as ToolId)}
+                value={source}
+                onChange={(e) => setSource(e.target.value as OrderSource)}
                 className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
               >
-                {WORKSHOP_TOOLS.map((tool) => (
-                  <option key={tool.id} value={tool.id}>
-                    {tool.name}
-                  </option>
-                ))}
+                <option value="facebook">صفحة فيسبوك</option>
+                <option value="shop">زيارة المحل</option>
+                <option value="direct">عميل مباشر / هاتف</option>
               </select>
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+              البرنامج المرتبط بالتنفيذ
+            </label>
+            <select
+              value={activeToolId}
+              onChange={(e) => setActiveToolId(e.target.value as ToolId)}
+              className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+            >
+              {WORKSHOP_TOOLS.map((tool) => (
+                <option key={tool.id} value={tool.id}>
+                  {tool.name}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -280,7 +353,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
               rows={3}
               value={dimensionsNote}
               onChange={(e) => setDimensionsNote(e.target.value)}
-              placeholder="مثال: مطبخ 3.20 × 2.40 متر كلادينج أبيض × أسود، قطاع PS صغير للشبابيك..."
+              placeholder="مثال: شبابيك UPVC أبيض دبل جلاس 24 مم أو مطبخ كلادينج / قطاع PS..."
               className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
             />
           </div>

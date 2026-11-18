@@ -8,6 +8,7 @@ import type {
   FacebookMessage,
   OrderSource,
   OrderStage,
+  ProfileCategory,
   ToolId,
   WorkshopOrder,
 } from '../src/types.ts';
@@ -56,15 +57,49 @@ interface StoreData {
   orders: WorkshopOrder[];
   inquiries: FacebookInquiry[];
   nextOrderSeq: number;
+  nextQuoteSeq: number;
+}
+
+function normalizeProfileType(
+  value?: unknown,
+  fallbackText?: string
+): ProfileCategory {
+  if (value === 'upvc') return 'upvc';
+  if (value === 'aluminum') return 'aluminum';
+  if (
+    fallbackText &&
+    /upvc|يو\s*بي\s*في\s*سي|بي\s*في\s*سي/i.test(fallbackText)
+  ) {
+    return 'upvc';
+  }
+  return 'aluminum';
 }
 
 function normalizeStore(raw: unknown): StoreData {
   const parsed = (raw && typeof raw === 'object' ? raw : {}) as Partial<StoreData>;
+  const rawOrders = Array.isArray(parsed.orders) ? parsed.orders : [];
+  const rawInquiries = Array.isArray(parsed.inquiries) ? parsed.inquiries : [];
+
   return {
-    orders: Array.isArray(parsed.orders) ? parsed.orders : [],
-    inquiries: Array.isArray(parsed.inquiries) ? parsed.inquiries : [],
+    orders: rawOrders.map((order) => ({
+      ...order,
+      profileType: normalizeProfileType(order.profileType, order.projectType),
+    })),
+    inquiries: rawInquiries.map((inq) => ({
+      ...inq,
+      ...(inq.profileType || /upvc|يو\s*بي\s*في\s*سي/i.test(inq.projectInterest || '')
+        ? {
+            profileType: normalizeProfileType(
+              inq.profileType,
+              inq.projectInterest
+            ),
+          }
+        : {}),
+    })),
     nextOrderSeq:
       typeof parsed.nextOrderSeq === 'number' ? parsed.nextOrderSeq : 101,
+    nextQuoteSeq:
+      typeof parsed.nextQuoteSeq === 'number' ? parsed.nextQuoteSeq : 1001,
   };
 }
 
@@ -78,6 +113,7 @@ function readLocalStore(): StoreData {
         orders: [],
         inquiries: [],
         nextOrderSeq: 101,
+        nextQuoteSeq: 1001,
       };
       fs.writeFileSync(DATA_FILE, JSON.stringify(initial, null, 2), 'utf-8');
       return initial;
@@ -85,7 +121,7 @@ function readLocalStore(): StoreData {
     const raw = fs.readFileSync(DATA_FILE, 'utf-8');
     return normalizeStore(JSON.parse(raw));
   } catch {
-    return { orders: [], inquiries: [], nextOrderSeq: 101 };
+    return { orders: [], inquiries: [], nextOrderSeq: 101, nextQuoteSeq: 1001 };
   }
 }
 
@@ -227,6 +263,43 @@ function requireAdmin(req: Request, res: Response, next: NextFunction): void {
   next();
 }
 
+const rateBuckets = new Map<string, number[]>();
+
+function checkRateLimit(
+  req: Request,
+  bucketPrefix: string,
+  maxHits: number,
+  windowMs: number
+): boolean {
+  const ip =
+    (typeof req.ip === 'string' && req.ip) ||
+    req.socket.remoteAddress ||
+    'unknown';
+  const key = `${bucketPrefix}:${ip}`;
+  const now = Date.now();
+  const hits = (rateBuckets.get(key) || []).filter((t) => now - t < windowMs);
+  if (hits.length >= maxHits) {
+    rateBuckets.set(key, hits);
+    return false;
+  }
+  hits.push(now);
+  rateBuckets.set(key, hits);
+  return true;
+}
+
+const STAGE_LABELS: Record<OrderStage, string> = {
+  design_3d: 'التصميم ثلاثي الأبعاد 3D',
+  takhseem: 'التخصيم وتجهيز قوائم التقطيع',
+  costing: 'التسعير والاعتماد النهائي',
+  fabrication: 'التصنيع والتجميع بالورشة',
+  delivery: 'التسليم والتركيب بالموقع',
+};
+
+const PROFILE_LABELS: Record<ProfileCategory, string> = {
+  aluminum: 'ألومنيوم',
+  upvc: 'UPVC',
+};
+
 async function fetchFacebookSenderName(
   psid: string,
   accessToken: string
@@ -277,6 +350,13 @@ export function createApiApp(): Express {
   });
 
   app.post('/api/auth/login', (req: Request, res: Response) => {
+    if (!checkRateLimit(req, 'login', 10, 15 * 60 * 1000)) {
+      res.status(429).json({
+        error: 'تم تجاوز عدد محاولات تسجيل الدخول، يرجى الانتظار 15 دقيقة.',
+      });
+      return;
+    }
+
     const { password } = req.body as { password?: string };
     if (!password || typeof password !== 'string') {
       res.status(400).json({ error: 'يرجى إدخال كلمة مرور الإدارة' });
@@ -363,13 +443,19 @@ export function createApiApp(): Express {
     const seq = store.nextOrderSeq;
     store.nextOrderSeq += 1;
 
+    const profileType = normalizeProfileType(body.profileType, body.projectType);
+
     const newOrder: WorkshopOrder = {
       id: createId('ord'),
       code: body.code || `ALM-${seq}`,
       clientName: body.clientName.trim(),
       clientPhone: (body.clientPhone || '').trim(),
       source: (body.source as OrderSource) || 'direct',
-      projectType: (body.projectType || 'مطبخ ألومنيوم').trim(),
+      profileType,
+      projectType: (
+        body.projectType ||
+        (profileType === 'upvc' ? 'شبابيك وأبواب UPVC' : 'مطبخ ألومنيوم')
+      ).trim(),
       dimensionsNote: (body.dimensionsNote || '').trim(),
       stage: (body.stage as OrderStage) || 'design_3d',
       activeToolId: (body.activeToolId as ToolId) || 'kitchen-3d-studio',
@@ -413,6 +499,10 @@ export function createApiApp(): Express {
     }
 
     const existing = store.orders[idx];
+    const nextProjectType =
+      body.projectType !== undefined
+        ? body.projectType.trim()
+        : existing.projectType;
     const updated: WorkshopOrder = {
       ...existing,
       clientName:
@@ -424,10 +514,11 @@ export function createApiApp(): Express {
           ? body.clientPhone.trim()
           : existing.clientPhone,
       source: body.source ?? existing.source,
-      projectType:
-        body.projectType !== undefined
-          ? body.projectType.trim()
-          : existing.projectType,
+      profileType:
+        body.profileType !== undefined
+          ? normalizeProfileType(body.profileType, nextProjectType)
+          : normalizeProfileType(existing.profileType, nextProjectType),
+      projectType: nextProjectType,
       dimensionsNote:
         body.dimensionsNote !== undefined
           ? body.dimensionsNote.trim()
@@ -742,11 +833,67 @@ export function createApiApp(): Express {
     });
   });
 
+  // Public Non-PII Quote Status Tracking
+  app.get('/api/quotes/track', async (req: Request, res: Response) => {
+    const rawCode = typeof req.query.code === 'string' ? req.query.code.trim().toUpperCase() : '';
+    if (!rawCode || rawCode.length < 4) {
+      res.status(400).json({ error: 'يرجى إدخال رقم متابعة صحيح (مثال: MT-1001)' });
+      return;
+    }
+
+    const store = await loadStore();
+    const inquiry = store.inquiries.find(
+      (i) => (i.referenceCode || '').toUpperCase() === rawCode
+    );
+
+    if (!inquiry) {
+      res.status(404).json({ error: 'لم يتم العثور على طلب بهذا الرقم المرجعي.' });
+      return;
+    }
+
+    const linkedOrder = inquiry.linkedOrderId
+      ? store.orders.find((o) => o.id === inquiry.linkedOrderId)
+      : undefined;
+
+    const statusLabel =
+      inquiry.status === 'converted'
+        ? 'تم التحويل لأمر شغل بالورشة'
+        : inquiry.status === 'replied'
+        ? 'تمت مراجعة الطلب والرد'
+        : 'تم الاستلام وقيد المراجعة';
+
+    const resolvedProfileType =
+      linkedOrder?.profileType ||
+      normalizeProfileType(inquiry.profileType, inquiry.projectInterest);
+
+    res.json({
+      tracking: {
+        referenceCode: inquiry.referenceCode,
+        profileTypeLabel: PROFILE_LABELS[resolvedProfileType],
+        projectInterest: inquiry.projectInterest,
+        status: inquiry.status,
+        statusLabel,
+        linkedOrderCode: linkedOrder?.code,
+        linkedOrderStageLabel: linkedOrder ? STAGE_LABELS[linkedOrder.stage] : undefined,
+        createdAt: inquiry.createdAt,
+        updatedAt: inquiry.updatedAt,
+      },
+    });
+  });
+
   // Public Quote / Customer Inquiry Submission (also used by Admin Manual Add)
   app.post('/api/facebook/inquiries', async (req: Request, res: Response) => {
+    if (!isAdminAuthenticated(req) && !checkRateLimit(req, 'quote', 12, 15 * 60 * 1000)) {
+      res.status(429).json({
+        error: 'تم إرسال عدة طلبات مؤخراً، يرجى الانتظار قليلاً قبل إعادة المحاولة.',
+      });
+      return;
+    }
+
     const body = req.body as {
       customerName?: string;
       customerPhone?: string;
+      profileType?: ProfileCategory;
       projectInterest?: string;
       initialMessage?: string;
       attachmentName?: string;
@@ -770,13 +917,22 @@ export function createApiApp(): Express {
 
     const store = await loadStore();
     const now = new Date().toISOString();
+    const quoteSeq = store.nextQuoteSeq || 1001;
+    store.nextQuoteSeq = quoteSeq + 1;
+    const referenceCode = `MT-${quoteSeq}`;
+    const profileType = normalizeProfileType(
+      body.profileType,
+      `${body.projectInterest || ''} ${body.initialMessage || ''}`
+    );
 
     const inquiry: FacebookInquiry = {
       id: createId('inq'),
+      referenceCode,
       customerName: body.customerName.trim(),
       customerPhone: (body.customerPhone || '').trim(),
+      profileType,
       projectInterest: (
-        body.projectInterest || 'استفسار ألومنيوم / مطبخ'
+        body.projectInterest || 'استفسار ألومنيوم / UPVC / مطبخ'
       ).trim(),
       status: 'new',
       sourceType: 'manual',
@@ -803,7 +959,9 @@ export function createApiApp(): Express {
     res.status(201).json({
       inquiry: {
         id: inquiry.id,
+        referenceCode: inquiry.referenceCode,
         customerName: inquiry.customerName,
+        profileType: inquiry.profileType,
         projectInterest: inquiry.projectInterest,
         status: inquiry.status,
         createdAt: inquiry.createdAt,

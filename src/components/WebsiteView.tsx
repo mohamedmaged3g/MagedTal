@@ -2,8 +2,10 @@ import React, { useRef, useState } from 'react';
 import {
   ArrowLeft,
   Calculator,
+  Check,
   CheckCircle2,
   ChevronDown,
+  Copy,
   ExternalLink,
   ImagePlus,
   Layers,
@@ -12,12 +14,21 @@ import {
   Menu,
   MessageCircle,
   Moon,
+  Printer,
+  Search,
   ShieldCheck,
   Sun,
   X,
+  ZoomIn,
 } from 'lucide-react';
 import { FACEBOOK_PAGE_URL } from '../data/tools.ts';
-import type { ToolId } from '../types.ts';
+import type {
+  FacebookInquiry,
+  ProfileCategory,
+  QuoteTrackingResult,
+  ToolId,
+} from '../types.ts';
+import { PWAInstallButton } from './PWAInstallButton.tsx';
 import type { ActiveTab } from './Sidebar.tsx';
 
 interface WebsiteViewProps {
@@ -28,11 +39,12 @@ interface WebsiteViewProps {
   onSubmitQuoteRequest: (payload: {
     customerName: string;
     customerPhone: string;
+    profileType?: ProfileCategory;
     projectInterest: string;
     initialMessage: string;
     attachmentName?: string;
     attachmentDataUrl?: string;
-  }) => Promise<void>;
+  }) => Promise<FacebookInquiry | unknown>;
 }
 
 interface ResilientImageProps {
@@ -129,38 +141,163 @@ const ESTIMATOR_OPTIONS: EstimatorOption[] = [
     minQty: 2,
     maxQty: 50,
   },
+  {
+    id: 'upvc',
+    label: 'شبابيك وأبواب UPVC عازلة (دبل جلاس)',
+    formInterest: 'شبابيك وأبواب UPVC',
+    unitLabel: 'المساحة الإجمالية بالمتر المربع (م²)',
+    minRate: 4400,
+    maxRate: 6000,
+    defaultQty: 8,
+    minQty: 1,
+    maxQty: 45,
+  },
 ];
 
-const PORTFOLIO_ITEMS = [
+const FINISH_SWATCHES = [
+  {
+    id: 'matte-black',
+    name: 'أسود مط أنودايزد',
+    code: '#1E293B',
+    surfaceClass: 'bg-slate-800',
+  },
+  {
+    id: 'anodized-silver',
+    name: 'فضي معدني',
+    code: '#CBD5E1',
+    surfaceClass: 'bg-slate-300',
+  },
+  {
+    id: 'warm-champagne',
+    name: 'شمبانيا دافئ',
+    code: '#C2B280',
+    surfaceClass: 'bg-[#C2B280]',
+  },
+  {
+    id: 'walnut-wood',
+    name: 'خشبي جوزي (خشمونيوم)',
+    code: '#6F4E37',
+    surfaceClass: 'bg-[#6F4E37]',
+  },
+  {
+    id: 'graphite-cladding',
+    name: 'رمادي جرافيت كلادينج',
+    code: '#475569',
+    surfaceClass: 'bg-slate-600',
+  },
+  {
+    id: 'gloss-white',
+    name: 'أبيض ألومنيوم لامع',
+    code: '#F8FAFC',
+    surfaceClass: 'bg-slate-50 border border-slate-300',
+  },
+];
+
+const PROFILE_COMPARISON = [
+  {
+    name: 'قطاع PS صغير',
+    insulation: 'جيد للأتربة والمياه (كاوتش أحادي/مزدوج)',
+    glazing: 'زجاج سنجل 6 مم أو مصنفر',
+    bestUse: 'الغرف الصغيرة والمطابخ والحمامات',
+    tier: 'اقتصادي عملي',
+  },
+  {
+    name: 'قطاع PS كبير',
+    insulation: 'عزل عالٍ للصوت والغبار والحرارة',
+    glazing: 'زجاج سنجل أو دبل جلاس حتى 18 مم',
+    bestUse: 'غرف النوم والمعيشة والواجهات الهادئة',
+    tier: 'متوسط متوازن',
+  },
+  {
+    name: 'جامبو / تانجو',
+    insulation: 'أعلى عزل حراري وصوتي وإحكام إغلاق',
+    glazing: 'زجاج مزدوج دبل جلاس 24 مم (عاكس/شفاف)',
+    bestUse: 'أبواب البلكونات والواجهات الواسعة والريسبشن',
+    tier: 'معماري فائق',
+  },
+  {
+    name: 'قطاعات UPVC عازلة',
+    insulation: 'أعلى عزل حراري وصوتي ومنع تسرب المياه بلحام حراري محكم',
+    glazing: 'زجاج دبل جلاس 24 مم (شفاف / عاكس / أرجون)',
+    bestUse: 'الشبابيك المفصلية والقلاب والبلكونات في المناطق الحارة أو الصاخبة',
+    tier: 'عزل حراري وصوتي فائق',
+  },
+  {
+    name: 'مطابخ كلادينج',
+    insulation: 'مقاومة كاملة للماء والبخار والحشرات',
+    glazing: 'ألواح كلادينج مزدوجة + شاسيه ألومنيوم',
+    bestUse: 'المطابخ العصرية سهلة التنظيف بألوان متعددة',
+    tier: 'عصري معمر',
+  },
+  {
+    name: 'مطابخ خشمونيوم',
+    insulation: 'مقاوم للرطوبة بمظهر خشبي دافئ',
+    glazing: 'قطاعات خشبية معالجة حرارياً + فيبر/كلادينج',
+    bestUse: 'محبو الطابع الخشبي مع متانة الألومنيوم',
+    tier: 'تشطيب فاخر',
+  },
+];
+
+type PortfolioFilter = 'all' | 'kitchens' | 'windows' | 'facades';
+
+interface PortfolioItem {
+  id: string;
+  filter: Exclude<PortfolioFilter, 'all'>;
+  title: string;
+  category: string;
+  formInterest: string;
+  specs: string;
+  details: string;
+  image: string;
+  alt: string;
+}
+
+const PORTFOLIO_ITEMS: PortfolioItem[] = [
   {
     id: 'p1',
+    filter: 'kitchens',
     title: 'مطبخ كلادينج مودرن مع جزيرة وسطية',
     category: 'مطابخ كلادينج',
+    formInterest: 'مطبخ كلادينج / ألوميتال',
     specs: 'قطاعات ثقيلة · مفصلات هيدروليك · إضاءة مخفية',
+    details:
+      'تصميم حرف L مع جزيرة عملية، شاسيه ألومنيوم معالج للرطوبة، ومجاري أدراج سوفت كلوز تتحمل الأوزان الثقيلة.',
     image: '/src/assets/images/hero_aluminum_kitchen_1794999241476.jpg',
     alt: 'مطبخ ألومنيوم وكلادينج حديث من تنفيذ ورشة ماجدتال',
   },
   {
     id: 'p2',
+    filter: 'facades',
     title: 'واجهة بلكونة جرار دبل جلاس عازل',
     category: 'جامبو وتانجو',
+    formInterest: 'تجهيز واجهة أو شقة كاملة',
     specs: 'زجاج مزدوج 24 مم · عزل صوت وأتربة · كاوتش EPDM',
+    details:
+      'قطاع ثقيل بمسارات حركة سلسة وزجاج دبل جلاس عاكس معالج لعزل الضوضاء وأشعة الشمس في الواجهات المفتوحة.',
     image: '/src/assets/images/modern_balcony_aluminum_door_1795000004618.jpg',
     alt: 'باب وشباك بلكونة ألومنيوم جرار دبل جلاس أسود مط',
   },
   {
     id: 'p3',
+    filter: 'windows',
     title: 'شبابيك PS مفصلية وجرار تشطيب أنودايزد',
     category: 'شبابيك ألومنيوم',
+    formInterest: 'شبابيك وأبواب ألومنيوم',
     specs: 'زوايا تجميع 45 درجة · إكسسوارات أصلية · سلك بليسيه',
+    details:
+      'تجميع ميكانيكي محكم للزوايا مع فرشة عزل مزدوجة ومفصلات وسكاكات أصلية ومجرى سلك بليسيه مدمج.',
     image: '/src/assets/images/aluminum_window_craft_1794999241439.jpg',
     alt: 'تفاصيل زوايا وتجميع شبابيك ألومنيوم عازلة للصوت والحرارة',
   },
   {
     id: 'p4',
+    filter: 'facades',
     title: 'خط تقطيع وتخصيم رقمي داخل الورشة',
     category: 'دقة التصنيع',
+    formInterest: 'تصميم مطبخ 3D ومقايسة',
     specs: 'قوائم قص رقمية بالملليمتر · فحص جودة قبل التركيب',
+    details:
+      'مراجعة كل قطعة على قوائم التخصيم الآلية قبل خروجها للموقع لضمان سرعة التركيب ودقة المقاسات بدون تعديلات.',
     image: '/src/assets/images/workshop_precision_fabrication_1794999242742.jpg',
     alt: 'ورشة تصنيع وتجهيز قطاعات الألومنيوم والمطابخ',
   },
@@ -234,8 +371,12 @@ const FAQ_ITEMS = [
     a: 'الكلادينج يتميز بألواح مركبة مقاومة للحرارة والرطوبة وسهلة التنظيف بألوان عصرية، والخشمونيوم يمنح مظهر الخشب الطبيعي مع متانة الألومنيوم وعدم التأثر بالماء أو الحشرات.',
   },
   {
-    q: 'هل الشبابيك الألومنيوم عازلة فعلاً للصوت والأتربة؟',
-    a: 'نعم، عند اختيار قطاعات PS كبير أو جامبو/تانجو مع زجاج مزدوج (دبل جلاس) وكاوتش عزل مزدوج، يتم تقليل الضوضاء والأتربة وتسرب الهواء بشكل كبير.',
+    q: 'هل الشبابيك الألومنيوم وUPVC عازلة فعلاً للصوت والأتربة؟',
+    a: 'نعم، عند اختيار قطاعات UPVC بلحام حراري أو قطاعات PS كبير وجامبو/تانجو مع زجاج مزدوج (دبل جلاس) وكاوتش عزل مزدوج، يتم تقليل الضوضاء والأتربة والحرارة بشكل ملحوظ.',
+  },
+  {
+    q: 'متى أختار قطاعات UPVC بدلاً من الألومنيوم؟',
+    a: 'يُفضل UPVC في الواجهات المشمسة أو الشوارع المزدحمة لأقصى عزل حراري وصوتي، بينما يمتاز الألومنيوم (PS وجامبو وتانجو) بتنوع أكبر في الألوان المعدنية وقدرة تحمّل ممتازة للفتحات الكبيرة.',
   },
   {
     q: 'هل يوجد ضمان على التركيب والإكسسوارات؟',
@@ -252,10 +393,15 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
 }) => {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  // Estimator state
+  // Portfolio state
+  const [portfolioFilter, setPortfolioFilter] = useState<PortfolioFilter>('all');
+  const [lightboxItem, setLightboxItem] = useState<PortfolioItem | null>(null);
+
+  // Estimator & Swatch state
   const [estTypeId, setEstTypeId] = useState<string>('cladding');
   const [estQty, setEstQty] = useState<number>(5);
   const [estTier, setEstTier] = useState<'standard' | 'premium'>('standard');
+  const [selectedSwatchId, setSelectedSwatchId] = useState<string>('matte-black');
 
   // Quote Form state
   const [customerName, setCustomerName] = useState('');
@@ -268,17 +414,31 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [submittedSuccess, setSubmittedSuccess] = useState(false);
+  const [submittedRefCode, setSubmittedRefCode] = useState<string | null>(null);
+  const [copiedRefCode, setCopiedRefCode] = useState(false);
+
+  // Tracking lookup state
+  const [trackInput, setTrackInput] = useState('');
+  const [trackingLoading, setTrackingLoading] = useState(false);
+  const [trackingError, setTrackingError] = useState<string | null>(null);
+  const [trackingResult, setTrackingResult] = useState<QuoteTrackingResult | null>(null);
 
   // FAQ state
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
 
   const selectedEst =
     ESTIMATOR_OPTIONS.find((opt) => opt.id === estTypeId) || ESTIMATOR_OPTIONS[0];
+  const selectedSwatch =
+    FINISH_SWATCHES.find((s) => s.id === selectedSwatchId) || FINISH_SWATCHES[0];
   const tierMultiplier = estTier === 'premium' ? 1.15 : 1;
   const clampedQty = Math.max(selectedEst.minQty, Math.min(selectedEst.maxQty, estQty));
   const estMinTotal = Math.round((clampedQty * selectedEst.minRate * tierMultiplier) / 100) * 100;
   const estMaxTotal = Math.round((clampedQty * selectedEst.maxRate * tierMultiplier) / 100) * 100;
+
+  const filteredPortfolio =
+    portfolioFilter === 'all'
+      ? PORTFOLIO_ITEMS
+      : PORTFOLIO_ITEMS.filter((item) => item.filter === portfolioFilter);
 
   const handleEstimatorCategoryChange = (nextId: string) => {
     setEstTypeId(nextId);
@@ -290,13 +450,26 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
 
   const handleApplyEstimateToForm = () => {
     setProjectInterest(selectedEst.formInterest);
-    const tierLabel = estTier === 'premium' ? 'مستوى ممتاز (سوفت كلوز / إكسسوار مستورد)' : 'مستوى قياسي معتمد';
-    const summaryLine = `تقدير مبدئي من الحاسبة: ${selectedEst.label} - الكمية: ${clampedQty} (${selectedEst.unitLabel}) - ${tierLabel} - النطاق التقديري: ${estMinTotal.toLocaleString('en-US')} إلى ${estMaxTotal.toLocaleString('en-US')} ج.م`;
-    setDimensionsText((prev) => (prev.trim() ? `${summaryLine}\n${prev}` : summaryLine));
-    const el = document.getElementById('quote-form');
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth' });
-    }
+    const tierLabel =
+      estTier === 'premium'
+        ? 'مستوى ممتاز (سوفت كلوز / إكسسوار مستورد)'
+        : 'مستوى قياسي معتمد';
+    const summaryLine = `تقدير مبدئي: ${selectedEst.label} | الكمية: ${clampedQty} (${selectedEst.unitLabel}) | اللون المفضل: ${selectedSwatch.name} | ${tierLabel} | النطاق: ${estMinTotal.toLocaleString('en-US')} إلى ${estMaxTotal.toLocaleString('en-US')} ج.م`;
+    setDimensionsText((prev) =>
+      prev.trim() ? `${summaryLine}\n${prev}` : summaryLine
+    );
+    document.getElementById('quote-form')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleRequestSimilarFromPortfolio = (item: PortfolioItem) => {
+    setProjectInterest(item.formInterest);
+    setDimensionsText((prev) =>
+      prev.trim()
+        ? prev
+        : `أرغب في طلب مقايسة وتصميم مماثل لنموذج: ${item.title} (${item.specs}) - اللون المفضل: ${selectedSwatch.name}`
+    );
+    setLightboxItem(null);
+    document.getElementById('quote-form')?.scrollIntoView({ behavior: 'smooth' });
   };
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -366,7 +539,7 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
   const handleQuoteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
-    setSubmittedSuccess(false);
+    setSubmittedRefCode(null);
 
     const cleanName = customerName.trim();
     const cleanPhone = customerPhone.trim();
@@ -385,29 +558,82 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
       return;
     }
 
+    const inferredProfileType: ProfileCategory =
+      /upvc|يو\s*بي\s*في\s*سي/i.test(`${projectInterest} ${cleanNotes}`)
+        ? 'upvc'
+        : 'aluminum';
+
     setSubmitting(true);
     try {
-      await onSubmitQuoteRequest({
+      const created = (await onSubmitQuoteRequest({
         customerName: cleanName,
         customerPhone: cleanPhone,
+        profileType: inferredProfileType,
         projectInterest,
         initialMessage: cleanNotes
-          ? `طلب مقايسة من الموقع: ${cleanNotes}`
-          : 'طلب مقايسة من الموقع (مرفق صورة للمقاسات والتفاصيل)',
+          ? `طلب مقايسة من الموقع (${selectedSwatch.name}): ${cleanNotes}`
+          : `طلب مقايسة من الموقع (مرفق صورة للمقاسات · اللون: ${selectedSwatch.name})`,
         attachmentName: attachmentName || undefined,
         attachmentDataUrl: attachmentDataUrl || undefined,
-      });
+      })) as FacebookInquiry | undefined;
+
+      const refCode = created?.referenceCode || 'MT-NEW';
+      setSubmittedRefCode(refCode);
+      if (created?.referenceCode) {
+        setTrackInput(created.referenceCode);
+      }
       setCustomerName('');
       setCustomerPhone('');
       setDimensionsText('');
       handleRemoveAttachment();
-      setSubmittedSuccess(true);
     } catch (err) {
       setFormError(
         err instanceof Error ? err.message : 'تعذر إرسال الطلب حالياً، حاول مرة أخرى.'
       );
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleCopyRefCode = async () => {
+    if (!submittedRefCode) return;
+    try {
+      await navigator.clipboard.writeText(submittedRefCode);
+      setCopiedRefCode(true);
+      setTimeout(() => setCopiedRefCode(false), 2000);
+    } catch {
+      // Ignore clipboard API failure
+    }
+  };
+
+  const handleTrackLookup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTrackingError(null);
+    setTrackingResult(null);
+    const code = trackInput.trim().toUpperCase();
+    if (code.length < 4) {
+      setTrackingError('أدخل رقم المتابعة مثل MT-1001');
+      return;
+    }
+
+    setTrackingLoading(true);
+    try {
+      const res = await fetch(
+        `/api/quotes/track?code=${encodeURIComponent(code)}`
+      );
+      const data = (await res.json()) as {
+        tracking?: QuoteTrackingResult;
+        error?: string;
+      };
+      if (!res.ok || !data.tracking) {
+        setTrackingError(data.error || 'لم يتم العثور على الطلب');
+      } else {
+        setTrackingResult(data.tracking);
+      }
+    } catch {
+      setTrackingError('تعذر الاتصال بالخادم حالياً.');
+    } finally {
+      setTrackingLoading(false);
     }
   };
 
@@ -421,8 +647,47 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col">
-      {/* Top Bar: Brand + Single-line Navigation + Primary Quote Action + Theme & Admin Gate */}
-      <header className="sticky top-0 z-40 h-16 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-b border-slate-200 dark:border-slate-800">
+      {/* Formal Printable Estimate Sheet (Visible only during window.print()) */}
+      <div className="hidden print:block p-8 bg-white text-slate-900" dir="rtl">
+        <div className="border-b-2 border-slate-900 pb-4 mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">ماجدتال للألومنيوم والمطابخ الحديثة</h1>
+            <p className="text-sm text-slate-600 mt-1">
+              ملخص تقدير مقايسة مبدئية من الموقع الرسمي
+            </p>
+          </div>
+          <div className="text-left text-xs font-mono text-slate-600">
+            <p>https://maged-tal.vercel.app</p>
+            <p>{new Date().toLocaleDateString('ar-EG')}</p>
+          </div>
+        </div>
+        <div className="space-y-3 text-sm border border-slate-300 rounded-lg p-5">
+          <p>
+            <strong>نوع العمل:</strong> {selectedEst.label}
+          </p>
+          <p>
+            <strong>الكمية التقديرية:</strong> {clampedQty} ({selectedEst.unitLabel})
+          </p>
+          <p>
+            <strong>اللون / التشطيب المختار:</strong> {selectedSwatch.name}
+          </p>
+          <p>
+            <strong>مستوى الإكسسوارات:</strong>{' '}
+            {estTier === 'premium' ? 'ممتاز سوفت كلوز' : 'قياسي معتمد'}
+          </p>
+          <p className="text-lg font-bold pt-3 border-t border-slate-200">
+            نطاق التكلفة المتوقع: {estMinTotal.toLocaleString('en-US')} –{' '}
+            {estMaxTotal.toLocaleString('en-US')} ج.م
+          </p>
+        </div>
+        <p className="mt-4 text-xs text-slate-600">
+          ملاحظة: هذا التقدير استرشادي ويتأكد السعر النهائي بعد المعاينة الفعلية وتحديد نوع الزجاج والإكسسوارات.
+          للتواصل: mohamedmaged_3@yahoo.com
+        </p>
+      </div>
+
+      {/* Top Bar */}
+      <header className="print:hidden sticky top-0 z-40 h-16 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-b border-slate-200 dark:border-slate-800">
         <div className="max-w-[1280px] mx-auto h-full px-4 sm:px-8 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 shrink-0">
             <button
@@ -462,6 +727,10 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
           </nav>
 
           <div className="flex items-center gap-2 shrink-0">
+            <div className="hidden sm:block">
+              <PWAInstallButton compact />
+            </div>
+
             <button
               type="button"
               onClick={() => onToggleTheme(theme === 'light' ? 'dark' : 'light')}
@@ -506,7 +775,7 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
                 {link.label}
               </a>
             ))}
-            <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
               <button
                 type="button"
                 onClick={() => {
@@ -518,13 +787,14 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
                 <Lock className="w-3.5 h-3.5" />
                 <span>{isAuthenticated ? 'لوحة الإدارة' : 'بوابة الإدارة'}</span>
               </button>
+              <PWAInstallButton compact />
               <a
                 href={FACEBOOK_PAGE_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-blue-700 dark:text-blue-400"
               >
-                <span>صفحة فيسبوك</span>
+                <span>فيسبوك</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
             </div>
@@ -532,12 +802,11 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
         )}
       </header>
 
-      <main id="top" className="flex-1">
+      <main id="top" className="print:hidden flex-1">
         {/* Hero Section */}
         <section className="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
           <div className="max-w-[1280px] mx-auto px-4 sm:px-8 py-12 lg:py-16">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-stretch">
-              {/* Hero Copy */}
               <div className="lg:col-span-5 flex flex-col justify-between py-2">
                 <div>
                   <p className="text-xs font-medium text-blue-700 dark:text-blue-400">
@@ -581,7 +850,6 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
                 </div>
               </div>
 
-              {/* Hero 16:9 Architectural Photography */}
               <div className="lg:col-span-7">
                 <div className="h-full min-h-[280px] sm:min-h-[400px] rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800">
                   <ResilientImage
@@ -594,7 +862,7 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
               </div>
             </div>
 
-            {/* 4-Column Capability Strip below Hero Split */}
+            {/* 4-Column Capability Strip */}
             <div className="mt-12 pt-8 border-t border-slate-200 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               <div>
                 <p className="font-mono text-xs text-slate-400 dark:text-slate-500">01</p>
@@ -626,22 +894,22 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
               <div>
                 <p className="font-mono text-xs text-slate-400 dark:text-slate-500">04</p>
                 <p className="mt-1 text-sm font-bold text-slate-900 dark:text-slate-100">
-                  متابعة مباشرة من الطلب للتسليم
+                  متابعة برقم مرجعي للطلب
                 </p>
                 <p className="mt-1 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  استقبال طلبات الموقع ورسائل فيسبوك مع جدول تنفيذ منظم وضمان ما بعد التركيب.
+                  يحصل كل عميل على رقم متابعة لمعرفة حالة الطلب من التصميم حتى التسليم.
                 </p>
               </div>
             </div>
           </div>
         </section>
 
-        {/* Services & Craftsmanship Asymmetric Bento Grid */}
+        {/* Services & Profile Comparison */}
         <section id="services" className="py-16">
           <div className="max-w-[1280px] mx-auto px-4 sm:px-8">
             <div className="max-w-2xl mb-10">
               <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100 text-balance">
-                تخصصات الورشة ومواصفات القطاعات
+                تخصصات الورشة ومقارنة القطاعات
               </h2>
               <p className="mt-2 text-sm sm:text-base text-slate-600 dark:text-slate-400">
                 كل مرحلة في الورشة مدعومة بنظام حسابي وتصميمي مخصص لضمان ثبات القطاعات وسلاسة الحركة لعمر طويل.
@@ -649,7 +917,6 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {/* Wide Feature Card 01 */}
               <div className="lg:col-span-7 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden flex flex-col">
                 <div className="aspect-[4/3] sm:aspect-[16/10] bg-slate-100 dark:bg-slate-800 overflow-hidden">
                   <ResilientImage
@@ -665,16 +932,15 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
                       01 · أنظمة الشبابيك والواجهات
                     </p>
                     <h3 className="mt-2 text-lg font-bold text-slate-900 dark:text-slate-100">
-                      شبابيك وأبواب ألومنيوم عازلة (جرار · مفصلي · قلاب)
+                      شبابيك وأبواب ألومنيوم وUPVC عازلة (جرار · مفصلي · قلاب)
                     </h3>
                     <p className="mt-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                      تنفيذ قطاعات PS صغير وكبير وقطاعات التانجو والجامبو مع زجاج مزدوج (دبل جلاس) عازل للأتربة والضوضاء والحرارة، وتخصيم آلي يضمن إحكام الغلق.
+                      تنفيذ قطاعات PS صغير وكبير وقطاعات التانجو والجامبو، بالإضافة إلى قطاعات UPVC العازلة بالحام الحراري مع زجاج مزدوج (دبل جلاس) لعزل الأتربة والضوضاء والحرارة.
                     </p>
                   </div>
                 </div>
               </div>
 
-              {/* Feature Card 02 */}
               <div className="lg:col-span-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden flex flex-col">
                 <div className="aspect-[4/3] bg-slate-100 dark:bg-slate-800 overflow-hidden">
                   <ResilientImage
@@ -700,49 +966,55 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
               </div>
             </div>
 
-            {/* Technical Specs Strip */}
-            <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5">
-                <p className="text-xs font-mono text-blue-700 dark:text-blue-400">قطاعات PS</p>
-                <p className="mt-1.5 text-sm font-bold text-slate-900 dark:text-slate-100">
-                  PS صغير وكبير عازل
-                </p>
-                <p className="mt-1 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  مناسب للغرف والمناور بجرار سلس أو مفصلي محكم مع كاوتش عزل مزدوج.
-                </p>
+            {/* Profile Comparison Table */}
+            <div className="mt-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+              <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  جدول مقارنة القطاعات المعتمدة لمساعدتك في الاختيار
+                </h3>
               </div>
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5">
-                <p className="text-xs font-mono text-blue-700 dark:text-blue-400">جامبو وتانجو</p>
-                <p className="mt-1.5 text-sm font-bold text-slate-900 dark:text-slate-100">
-                  واجهات وأبواب بلكونات ثقيلة
-                </p>
-                <p className="mt-1 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  قدرة تحمل عالية للمساحات الكبيرة مع زجاج دبل جلاس 24 مم لعزل الحرارة والضوضاء.
-                </p>
-              </div>
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5">
-                <p className="text-xs font-mono text-blue-700 dark:text-blue-400">مطابخ كلادينج</p>
-                <p className="mt-1.5 text-sm font-bold text-slate-900 dark:text-slate-100">
-                  كلادينج وخشمونيوم ضد الماء
-                </p>
-                <p className="mt-1 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  هيكل ألومنيوم متين مقاوم للرطوبة والحشرات وسهل التنظيف مع ألوان ثابتة.
-                </p>
-              </div>
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5">
-                <p className="text-xs font-mono text-blue-700 dark:text-blue-400">الإكسسوارات</p>
-                <p className="mt-1.5 text-sm font-bold text-slate-900 dark:text-slate-100">
-                  سوفت كلوز ومفصلات هيدروليك
-                </p>
-                <p className="mt-1 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  مفصلات ومقابض أصلية ومجاري أدراج تتحمل الأوزان اليومية بضمان 5 سنوات.
-                </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-right text-xs sm:text-sm">
+                  <thead className="bg-slate-50 dark:bg-slate-950/60 text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
+                    <tr>
+                      <th className="py-3 px-4 font-semibold whitespace-nowrap">النظام / القطاع</th>
+                      <th className="py-3 px-4 font-semibold">درجة العزل والمتانة</th>
+                      <th className="py-3 px-4 font-semibold">الزجاج / الحشو</th>
+                      <th className="py-3 px-4 font-semibold">الاستخدام الأنسب</th>
+                      <th className="py-3 px-4 font-semibold whitespace-nowrap">الفئة</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {PROFILE_COMPARISON.map((row) => (
+                      <tr
+                        key={row.name}
+                        className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40"
+                      >
+                        <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">
+                          {row.name}
+                        </td>
+                        <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300">
+                          {row.insulation}
+                        </td>
+                        <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300">
+                          {row.glazing}
+                        </td>
+                        <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300">
+                          {row.bestUse}
+                        </td>
+                        <td className="py-3.5 px-4 font-medium text-blue-700 dark:text-blue-400 whitespace-nowrap">
+                          {row.tier}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
         </section>
 
-        {/* Portfolio Showcase Gallery */}
+        {/* Portfolio Showcase Gallery with Filtering & Lightbox */}
         <section
           id="portfolio"
           className="py-16 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
@@ -754,32 +1026,63 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
                   نماذج من أعمالنا ومعايير التنفيذ
                 </h2>
                 <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 max-w-2xl">
-                  اهتمام بأدق تفاصيل التقفيل، زوايا التجميع، تناسق الألوان، وجودة الزجاج والإكسسوار في كل مشروع.
+                  اضغط على أي صورة للتكبير واستعراض تفاصيل الخامات والزجاج والإكسسوارات.
                 </p>
               </div>
-              <a
-                href="#quote-form"
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 dark:text-blue-400 hover:underline"
+
+              <div
+                className="flex flex-wrap items-center gap-1.5"
+                role="tablist"
+                aria-label="تصفية معرض الأعمال"
               >
-                <span>اطلب معاينة لمشروعك المماثل</span>
-                <ArrowLeft className="w-3.5 h-3.5" />
-              </a>
+                {(
+                  [
+                    { id: 'all', label: 'الكل' },
+                    { id: 'kitchens', label: 'مطابخ' },
+                    { id: 'windows', label: 'شبابيك' },
+                    { id: 'facades', label: 'واجهات والتصنيع' },
+                  ] as const
+                ).map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={portfolioFilter === tab.id}
+                    onClick={() => setPortfolioFilter(tab.id)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                      portfolioFilter === tab.id
+                        ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-              {PORTFOLIO_ITEMS.map((item) => (
+              {filteredPortfolio.map((item) => (
                 <article
                   key={item.id}
                   className="bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden flex flex-col"
                 >
-                  <div className="aspect-[4/3] bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setLightboxItem(item)}
+                    className="group relative aspect-[4/3] bg-slate-100 dark:bg-slate-800 overflow-hidden text-right focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  >
                     <ResilientImage
                       src={item.image}
                       alt={item.alt}
                       fallbackTitle={item.title}
-                      className="w-full h-full object-cover transition-transform duration-300 hover:scale-[1.03]"
+                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                     />
-                  </div>
+                    <span className="absolute bottom-2.5 left-2.5 inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-900/75 text-white text-[11px] font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                      <ZoomIn className="w-3 h-3" />
+                      <span>تكبير</span>
+                    </span>
+                  </button>
                   <div className="p-4 flex-1 flex flex-col justify-between">
                     <div>
                       <p className="text-[11px] font-mono text-blue-700 dark:text-blue-400">
@@ -799,7 +1102,7 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
           </div>
         </section>
 
-        {/* Interactive Quick Cost Estimator */}
+        {/* Interactive Quick Cost Estimator & Finish Color Swatches */}
         <section
           id="estimator"
           className="py-16 border-t border-slate-200 dark:border-slate-800"
@@ -813,10 +1116,10 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
                       تقدير فوري مبدئي
                     </p>
                     <h2 className="mt-1 text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">
-                      حاسبة التكلفة التقديرية
+                      حاسبة التكلفة وكتالوج الألوان المعتمدة
                     </h2>
                     <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-                      اختر نوع العمل وأدخل الأمتار التقريبية لمعرفة نطاق الميزانية المتوقع قبل طلب المقايسة الدقيقة.
+                      اختر نوع العمل، حدد الأمتار واللون المفضل لمعرفة نطاق الميزانية المتوقع أو حفظ الملخص.
                     </p>
                   </div>
 
@@ -903,6 +1206,41 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
                       </div>
                     </div>
                   </div>
+
+                  {/* Interactive Color & Material Swatches */}
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-2">
+                      <span className="font-semibold text-slate-700 dark:text-slate-300">
+                        4. اختر اللون / الخامة المفضلة
+                      </span>
+                      <span className="text-blue-700 dark:text-blue-400 font-medium">
+                        {selectedSwatch.name}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {FINISH_SWATCHES.map((swatch) => {
+                        const active = swatch.id === selectedSwatch.id;
+                        return (
+                          <button
+                            key={swatch.id}
+                            type="button"
+                            onClick={() => setSelectedSwatchId(swatch.id)}
+                            className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border text-right text-xs transition-colors ${
+                              active
+                                ? 'border-blue-600 bg-blue-50/70 dark:bg-blue-950/40 text-slate-900 dark:text-slate-100 font-semibold'
+                                : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-300 hover:border-slate-400 dark:hover:border-slate-600'
+                            }`}
+                          >
+                            <span
+                              className={`w-4 h-4 rounded-full shrink-0 ${swatch.surfaceClass}`}
+                              aria-hidden="true"
+                            />
+                            <span className="truncate">{swatch.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Estimator Output Panel */}
@@ -917,6 +1255,9 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
                         ج.م
                       </span>
                     </p>
+                    <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
+                      اللون المختار: <strong>{selectedSwatch.name}</strong>
+                    </p>
                     <p className="mt-2 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                       * هذا الرقم استرشادي ويتحدد السعر النهائي بدقة بعد مراجعة المقاسات ونوع الزجاج والإكسسوارات المختارة في المعاينة.
                     </p>
@@ -929,6 +1270,15 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
                       className="w-full px-4 py-3 text-xs sm:text-sm font-semibold text-white bg-blue-700 hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-500 rounded-lg transition-colors"
                     >
                       اعتماد التقدير وإرساله في طلب المقايسة
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => window.print()}
+                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      <span>طباعة / حفظ ملخص المقايسة PDF</span>
                     </button>
                   </div>
                 </div>
@@ -991,7 +1341,6 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
           className="py-16 border-b border-slate-200 dark:border-slate-800"
         >
           <div className="max-w-[1280px] mx-auto px-4 sm:px-8 space-y-14">
-            {/* Client Reviews */}
             <div>
               <div className="max-w-2xl mb-8">
                 <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">
@@ -1024,7 +1373,6 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
               </div>
             </div>
 
-            {/* Interactive FAQ Accordion */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
               <div className="lg:col-span-4">
                 <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
@@ -1069,7 +1417,7 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
           </div>
         </section>
 
-        {/* Interactive Quote / Customer Request Form */}
+        {/* Interactive Quote Form & Order Reference Tracker */}
         <section id="quote-form" className="py-16">
           <div className="max-w-[1280px] mx-auto px-4 sm:px-8">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -1079,7 +1427,7 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
                     اطلب مقايسة ومعاينة لمطبخك أو شبابيكك
                   </h2>
                   <p className="mt-3 text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed">
-                    أرسل المقاسات التقريبية أو صورة للمكان، وسيصل طلبك فوراً لفريق الورشة للبدء في التصميم ثلاثي الأبعاد وحساب التكلفة بدقة.
+                    أرسل المقاسات التقريبية أو صورة للمكان، وسيصل طلبك فوراً لفريق الورشة برقم متابعة خاص لبدء التصميم 3D والتسعير بدقة.
                   </p>
                 </div>
 
@@ -1106,24 +1454,113 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
                     </a>
                   </div>
                 </div>
+
+                {/* Public Non-PII Quote Tracking Widget */}
+                <div
+                  id="track-order"
+                  className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-3"
+                >
+                  <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                    متابعة حالة طلب مقايسة
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    أدخل الرقم المرجعي الذي حصلت عليه بعد إرسال الطلب (مثال: MT-1001):
+                  </p>
+
+                  <form onSubmit={handleTrackLookup} className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      dir="ltr"
+                      value={trackInput}
+                      onChange={(e) => setTrackInput(e.target.value)}
+                      placeholder="MT-1001"
+                      className="flex-1 px-3 py-2 text-xs font-mono uppercase bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+                    />
+                    <button
+                      type="submit"
+                      disabled={trackingLoading}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-slate-900 dark:bg-slate-100 dark:text-slate-950 hover:bg-slate-800 dark:hover:bg-white disabled:opacity-50 rounded-lg transition-colors shrink-0"
+                    >
+                      <Search className="w-3.5 h-3.5" />
+                      <span>{trackingLoading ? 'فحص...' : 'متابعة'}</span>
+                    </button>
+                  </form>
+
+                  {trackingError && (
+                    <p className="text-xs text-red-700 dark:text-red-400">
+                      {trackingError}
+                    </p>
+                  )}
+
+                  {trackingResult && (
+                    <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs space-y-1">
+                      <p className="font-bold text-slate-900 dark:text-slate-100">
+                        الطلب{' '}
+                        <span className="font-mono text-blue-700 dark:text-blue-400">
+                          {trackingResult.referenceCode}
+                        </span>
+                      </p>
+                      <p className="text-slate-600 dark:text-slate-300">
+                        {trackingResult.profileTypeLabel && (
+                          <>
+                            نوع القطاع: <strong>{trackingResult.profileTypeLabel}</strong> ·{' '}
+                          </>
+                        )}
+                        الحالة: <strong>{trackingResult.statusLabel}</strong>
+                      </p>
+                      {trackingResult.linkedOrderStageLabel && (
+                        <p className="text-emerald-700 dark:text-emerald-400 font-medium">
+                          مرحلة التنفيذ ({trackingResult.linkedOrderCode}):{' '}
+                          {trackingResult.linkedOrderStageLabel}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="lg:col-span-7 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 sm:p-8">
-                {submittedSuccess && (
-                  <div className="mb-5 p-4 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-900 rounded-lg flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5 text-sm font-medium text-emerald-900 dark:text-emerald-200">
-                      <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                      <span>تم استلام طلبك بنجاح، وسيتواصل معك فريق ماجدتال قريباً.</span>
+                {submittedRefCode && (
+                  <div className="mb-5 p-4 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-900 rounded-lg space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 text-sm font-medium text-emerald-900 dark:text-emerald-200">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <span>تم استلام طلبك بنجاح، وسيتواصل معك فريق ماجدتال قريباً.</span>
+                      </div>
+                      {isAuthenticated && (
+                        <button
+                          type="button"
+                          onClick={() => onEnterDashboard('facebook')}
+                          className="text-xs font-semibold text-emerald-800 dark:text-emerald-300 underline whitespace-nowrap"
+                        >
+                          عرض في صندوق الوارد
+                        </button>
+                      )}
                     </div>
-                    {isAuthenticated && (
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-emerald-200 dark:border-emerald-800/70 text-xs text-emerald-900 dark:text-emerald-200">
+                      <span>
+                        رقم متابعة طلبك:{' '}
+                        <strong className="font-mono">{submittedRefCode}</strong>
+                      </span>
                       <button
                         type="button"
-                        onClick={() => onEnterDashboard('facebook')}
-                        className="text-xs font-semibold text-emerald-800 dark:text-emerald-300 underline whitespace-nowrap"
+                        onClick={handleCopyRefCode}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 rounded-md font-medium"
                       >
-                        عرض في صندوق الوارد
+                        {copiedRefCode ? (
+                          <>
+                            <Check className="w-3 h-3" />
+                            <span>تم النسخ</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            <span>نسخ الرقم</span>
+                          </>
+                        )}
                       </button>
-                    )}
+                    </div>
                   </div>
                 )}
 
@@ -1177,7 +1614,10 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
                         مطبخ كلادينج / ألوميتال
                       </option>
                       <option value="شبابيك وأبواب ألومنيوم">
-                        شبابيك وأبواب ألومنيوم
+                        شبابيك وأبواب ألومنيوم (PS / جامبو / تانجو)
+                      </option>
+                      <option value="شبابيك وأبواب UPVC">
+                        شبابيك وأبواب UPVC عازلة
                       </option>
                       <option value="تصميم مطبخ 3D ومقايسة">
                         تصميم مطبخ 3D ومقايسة
@@ -1275,8 +1715,70 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
         </section>
       </main>
 
+      {/* Portfolio Lightbox Modal */}
+      {lightboxItem && (
+        <div
+          className="print:hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setLightboxItem(null)}
+        >
+          <div
+            className="w-full max-w-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 dark:border-slate-800">
+              <div>
+                <p className="text-[11px] font-mono text-blue-700 dark:text-blue-400">
+                  {lightboxItem.category}
+                </p>
+                <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
+                  {lightboxItem.title}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLightboxItem(null)}
+                aria-label="إغلاق المعاينة"
+                className="p-1.5 text-slate-500 hover:text-slate-900 dark:hover:text-white rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="bg-slate-100 dark:bg-slate-950 max-h-[60vh] overflow-hidden flex items-center justify-center">
+              <img
+                src={lightboxItem.image}
+                alt={lightboxItem.alt}
+                className="max-h-[60vh] w-full object-contain"
+              />
+            </div>
+
+            <div className="p-5 flex flex-wrap items-center justify-between gap-4">
+              <div className="space-y-1 max-w-xl">
+                <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                  {lightboxItem.specs}
+                </p>
+                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                  {lightboxItem.details}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleRequestSimilarFromPortfolio(lightboxItem)}
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-500 rounded-lg transition-colors whitespace-nowrap shrink-0"
+              >
+                <span>اطلب تصميم مماثل</span>
+                <ArrowLeft className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Quiet Editorial Footer */}
-      <footer className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-8">
+      <footer className="print:hidden bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-8">
         <div className="max-w-[1280px] mx-auto px-4 sm:px-8 flex flex-wrap items-center justify-between gap-6">
           <div>
             <p className="text-sm font-bold text-slate-900 dark:text-slate-100">

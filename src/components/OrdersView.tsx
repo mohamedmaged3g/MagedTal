@@ -6,8 +6,18 @@ import {
   Search,
   Trash2,
 } from 'lucide-react';
-import { ORDER_STAGES, WORKSHOP_TOOLS } from '../data/tools.ts';
-import type { OrderStage, ToolId, WorkshopOrder } from '../types.ts';
+import {
+  ORDER_STAGES,
+  PROFILE_TYPES,
+  WORKSHOP_TOOLS,
+  getProfileTypeLabel,
+} from '../data/tools.ts';
+import type {
+  OrderStage,
+  ProfileCategory,
+  ToolId,
+  WorkshopOrder,
+} from '../types.ts';
 
 interface OrdersViewProps {
   orders: WorkshopOrder[];
@@ -28,8 +38,16 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 }) => {
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState<'all' | OrderStage>('all');
+  const [profileFilter, setProfileFilter] = useState<'all' | ProfileCategory>('all');
+
+  const resolveOrderProfile = (order: WorkshopOrder): ProfileCategory =>
+    order.profileType ||
+    (/upvc|يو\s*بي\s*في\s*سي/i.test(order.projectType) ? 'upvc' : 'aluminum');
 
   const filtered = orders.filter((order) => {
+    const orderProfile = resolveOrderProfile(order);
+    const matchesProfile =
+      profileFilter === 'all' ? true : orderProfile === profileFilter;
     const matchesStage =
       stageFilter === 'all' ? true : order.stage === stageFilter;
     const q = search.trim().toLowerCase();
@@ -38,8 +56,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       order.clientName.toLowerCase().includes(q) ||
       order.code.toLowerCase().includes(q) ||
       order.projectType.toLowerCase().includes(q) ||
+      getProfileTypeLabel(orderProfile).toLowerCase().includes(q) ||
       order.clientPhone.includes(q);
-    return matchesStage && matchesSearch;
+    return matchesProfile && matchesStage && matchesSearch;
   });
 
   return (
@@ -66,17 +85,50 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
           </button>
         </div>
 
-        {/* Search & Stage Filter */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
-          <div className="relative w-full md:w-72">
-            <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="بحث باسم العميل أو الكود..."
-              className="w-full pr-9 pl-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white dark:focus:bg-slate-950"
-            />
+        {/* Search, Profile Filter & Stage Filter */}
+        <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="relative w-full md:w-72">
+              <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="بحث باسم العميل أو الكود أو القطاع..."
+                className="w-full pr-9 pl-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white dark:focus:bg-slate-950"
+              />
+            </div>
+
+            <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
+              <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 ml-2 shrink-0">
+                القطاع:
+              </span>
+              <button
+                type="button"
+                onClick={() => setProfileFilter('all')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
+                  profileFilter === 'all'
+                    ? 'bg-blue-700 dark:bg-blue-600 text-white'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                الكل
+              </button>
+              {PROFILE_TYPES.map((pt) => (
+                <button
+                  key={pt.id}
+                  type="button"
+                  onClick={() => setProfileFilter(pt.id)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
+                    profileFilter === pt.id
+                      ? 'bg-blue-700 dark:bg-blue-600 text-white'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  {pt.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
@@ -89,7 +141,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                   : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
-              الكل ({orders.length})
+              كل المراحل ({orders.length})
             </button>
             {ORDER_STAGES.map((st) => (
               <button
@@ -141,6 +193,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                 <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 text-xs font-semibold text-slate-600 dark:text-slate-400">
                   <th className="py-3 px-4 whitespace-nowrap">الكود</th>
                   <th className="py-3 px-4 whitespace-nowrap">العميل</th>
+                  <th className="py-3 px-4 whitespace-nowrap">نوع القطاع</th>
                   <th className="py-3 px-4 whitespace-nowrap">العمل والمقاسات</th>
                   <th className="py-3 px-4 whitespace-nowrap">المرحلة</th>
                   <th className="py-3 px-4 whitespace-nowrap">الإجمالي / المتبقي</th>
@@ -150,6 +203,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
                 {filtered.map((order) => {
+                  const orderProfile = resolveOrderProfile(order);
                   const tool = WORKSHOP_TOOLS.find(
                     (t) => t.id === order.activeToolId
                   );
@@ -180,6 +234,18 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                               : 'مباشر'}
                           </span>
                         </p>
+                      </td>
+
+                      <td className="py-3 px-4 whitespace-nowrap text-xs font-semibold">
+                        <span
+                          className={
+                            orderProfile === 'upvc'
+                              ? 'text-blue-700 dark:text-blue-400 font-mono'
+                              : 'text-slate-700 dark:text-slate-300'
+                          }
+                        >
+                          {getProfileTypeLabel(orderProfile)}
+                        </span>
                       </td>
 
                       <td className="py-3 px-4 max-w-xs">

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { FACEBOOK_PAGE_URL, WORKSHOP_TOOLS } from '../data/tools.ts';
 import type { ToolId } from '../types.ts';
+import { PWAInstallButton } from './PWAInstallButton.tsx';
 
 export type ActiveTab = 'overview' | 'workspace' | 'facebook' | 'orders';
 
@@ -248,6 +249,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span>داكن</span>
           </button>
         </div>
+
+        <PWAInstallButton />
 
         <button
           type="button"

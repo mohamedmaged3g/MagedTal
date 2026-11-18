@@ -4,6 +4,7 @@ import { FacebookInboxView } from './components/FacebookInboxView.tsx';
 import { OrderModal } from './components/OrderModal.tsx';
 import { OrdersView } from './components/OrdersView.tsx';
 import { OverviewView } from './components/OverviewView.tsx';
+import { OfflineIndicator } from './components/PWAInstallButton.tsx';
 import { Sidebar, type ActiveTab } from './components/Sidebar.tsx';
 import { TopBar } from './components/TopBar.tsx';
 import { WebsiteView } from './components/WebsiteView.tsx';
@@ -15,6 +16,7 @@ import type {
   FacebookStatusResponse,
   OrderSource,
   OrderStage,
+  ProfileCategory,
   ToolId,
   WorkshopOrder,
 } from './types.ts';
@@ -71,6 +73,7 @@ export default function App() {
     clientName?: string;
     clientPhone?: string;
     source?: OrderSource;
+    profileType?: ProfileCategory;
     projectType?: string;
     dimensionsNote?: string;
     linkedInquiryId?: string;
@@ -234,6 +237,7 @@ export default function App() {
     clientName: string;
     clientPhone: string;
     source: OrderSource;
+    profileType: ProfileCategory;
     projectType: string;
     dimensionsNote: string;
     stage: OrderStage;
@@ -351,6 +355,7 @@ export default function App() {
   const handleCreateInquiry = async (payload: {
     customerName: string;
     customerPhone: string;
+    profileType?: ProfileCategory;
     projectInterest: string;
     initialMessage: string;
     attachmentName?: string;
@@ -369,6 +374,7 @@ export default function App() {
       throw new Error(data.error || 'تعذر حفظ الاستفسار');
     }
     setInquiries((prev) => [data.inquiry!, ...prev]);
+    return data.inquiry;
   };
 
   const handleSendReply = async (inquiryId: string, text: string) => {
@@ -407,11 +413,20 @@ export default function App() {
 
   const handleConvertInquiryToOrder = (inquiry: FacebookInquiry) => {
     const firstMsg = inquiry.messages[0]?.text || '';
+    const inferredProfile: ProfileCategory =
+      inquiry.profileType ||
+      (/upvc|يو\s*بي\s*في\s*سي/i.test(
+        `${inquiry.projectInterest} ${firstMsg}`
+      )
+        ? 'upvc'
+        : 'aluminum');
+
     setEditingOrder(null);
     setOrderPrefill({
       clientName: inquiry.customerName,
       clientPhone: inquiry.customerPhone || '',
       source: 'facebook',
+      profileType: inferredProfile,
       projectType: inquiry.projectInterest || 'استفسار فيسبوك',
       dimensionsNote: firstMsg,
       linkedInquiryId: inquiry.id,
@@ -528,12 +543,14 @@ export default function App() {
           }}
           onLogin={handleAdminLogin}
         />
+        <OfflineIndicator />
       </>
     );
   }
 
   return (
     <div className="min-h-screen flex bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+      <OfflineIndicator />
       <Sidebar
         activeTab={activeTab}
         activeToolId={activeToolId}

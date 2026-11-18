@@ -1,7 +1,16 @@
-import { OrderStage, WorkshopTool } from '../types.ts';
+import { OrderStage, ProfileCategory, WorkshopTool } from '../types.ts';
 
 export const FACEBOOK_PAGE_ID = '61596916040640';
 export const FACEBOOK_PAGE_URL = 'https://www.facebook.com/profile.php?id=61596916040640';
+
+export const PROFILE_TYPES: { id: ProfileCategory; label: string }[] = [
+  { id: 'aluminum', label: 'ألومنيوم' },
+  { id: 'upvc', label: 'UPVC' },
+];
+
+export function getProfileTypeLabel(profileType?: ProfileCategory): string {
+  return profileType === 'upvc' ? 'UPVC' : 'ألومنيوم';
+}
 
 export const WORKSHOP_TOOLS: WorkshopTool[] = [
   {
@@ -17,11 +26,11 @@ export const WORKSHOP_TOOLS: WorkshopTool[] = [
   },
   {
     id: 'takhseem-pro',
-    name: 'تخصيمات الشبابيك والألومنيوم',
+    name: 'تخصيمات الشبابيك (ألومنيوم وUPVC)',
     shortName: 'تخصيم الشبابيك',
     englishName: 'Takhseem Pro',
     category: 'تقطيع وتخصيم',
-    description: 'حساب مقاسات التخصيم بدقة للشبابيك والأبواب الألومنيوم وتجهيز قوائم التقطيع للورشة.',
+    description: 'حساب مقاسات التخصيم بدقة للشبابيك والأبواب الألومنيوم وقطاعات UPVC وتجهيز قوائم التقطيع للورشة.',
     url: 'https://takhseem-pro.vercel.app/',
     stageLabel: 'المرحلة 02 · التخصيم',
     recommendedStage: 'takhseem',
@@ -43,7 +52,7 @@ export const WORKSHOP_TOOLS: WorkshopTool[] = [
     shortName: 'التكلفة والحسابات',
     englishName: 'Workshop Manager',
     category: 'تكلفة وتسعير',
-    description: 'تحديد تكلفة قطاعات الألومنيوم والزجاج والإكسسوارات والعمالة بدقة لإصدار عرض السعر النهائي.',
+    description: 'تحديد تكلفة قطاعات الألومنيوم وUPVC والزجاج والإكسسوارات والعمالة بدقة لإصدار عرض السعر النهائي.',
     url: 'https://workshop-manager-taupe.vercel.app/',
     stageLabel: 'المرحلة 03 · التسعير',
     recommendedStage: 'costing',
