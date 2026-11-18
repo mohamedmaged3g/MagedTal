@@ -50,6 +50,8 @@ export interface FacebookMessage {
   sender: 'customer' | 'page';
   text: string;
   timestamp: string;
+  attachmentName?: string;
+  attachmentDataUrl?: string;
 }
 
 export interface FacebookInquiry {
@@ -73,6 +75,13 @@ export interface FacebookStatusResponse {
   webhookUrl: string;
   graphApiConfigured: boolean;
   verifyTokenConfigured: boolean;
+  persistentDbConfigured?: boolean;
+}
+
+export interface AuthSessionStatus {
+  authenticated: boolean;
+  usingDefaultPassword: boolean;
+  persistentDbConfigured: boolean;
 }
 
 export interface ToolEmbedCheck {

@@ -1,5 +1,6 @@
+import crypto from 'node:crypto';
 import dotenv from 'dotenv';
-import express, { Express, Request, Response } from 'express';
+import express, { Express, NextFunction, Request, Response } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import type {
@@ -18,6 +19,34 @@ const FB_PAGE_URL = `https://www.facebook.com/profile.php?id=${FB_PAGE_ID}`;
 const FB_VERIFY_TOKEN =
   process.env.FB_VERIFY_TOKEN || 'aluminum_workshop_webhook_verify';
 
+const DEFAULT_ADMIN_PASSWORD = 'MagedTal@2026';
+const ADMIN_PASSWORD =
+  (process.env.ADMIN_PASSWORD || '').trim() || DEFAULT_ADMIN_PASSWORD;
+const USING_DEFAULT_PASSWORD = !(process.env.ADMIN_PASSWORD || '').trim();
+const SESSION_SECRET =
+  (process.env.SESSION_SECRET || '').trim() ||
+  crypto
+    .createHash('sha256')
+    .update(`${ADMIN_PASSWORD}_magedtal_session_secret_v1`)
+    .digest('hex');
+const SESSION_COOKIE_NAME = 'magedtal_admin_session';
+const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
+
+const REDIS_REST_URL = (
+  process.env.UPSTASH_REDIS_REST_URL ||
+  process.env.KV_REST_API_URL ||
+  ''
+)
+  .trim()
+  .replace(/\/$/, '');
+const REDIS_REST_TOKEN = (
+  process.env.UPSTASH_REDIS_REST_TOKEN ||
+  process.env.KV_REST_API_TOKEN ||
+  ''
+).trim();
+const PERSISTENT_DB_CONFIGURED = Boolean(REDIS_REST_URL && REDIS_REST_TOKEN);
+const REDIS_STORE_KEY = 'magedtal:workshop:store:v1';
+
 const DATA_DIR = process.env.VERCEL
   ? path.join('/tmp', 'workshop-data')
   : path.join(process.cwd(), 'data');
@@ -29,7 +58,17 @@ interface StoreData {
   nextOrderSeq: number;
 }
 
-function ensureStore(): StoreData {
+function normalizeStore(raw: unknown): StoreData {
+  const parsed = (raw && typeof raw === 'object' ? raw : {}) as Partial<StoreData>;
+  return {
+    orders: Array.isArray(parsed.orders) ? parsed.orders : [],
+    inquiries: Array.isArray(parsed.inquiries) ? parsed.inquiries : [],
+    nextOrderSeq:
+      typeof parsed.nextOrderSeq === 'number' ? parsed.nextOrderSeq : 101,
+  };
+}
+
+function readLocalStore(): StoreData {
   try {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -44,19 +83,13 @@ function ensureStore(): StoreData {
       return initial;
     }
     const raw = fs.readFileSync(DATA_FILE, 'utf-8');
-    const parsed = JSON.parse(raw) as Partial<StoreData>;
-    return {
-      orders: Array.isArray(parsed.orders) ? parsed.orders : [],
-      inquiries: Array.isArray(parsed.inquiries) ? parsed.inquiries : [],
-      nextOrderSeq:
-        typeof parsed.nextOrderSeq === 'number' ? parsed.nextOrderSeq : 101,
-    };
+    return normalizeStore(JSON.parse(raw));
   } catch {
     return { orders: [], inquiries: [], nextOrderSeq: 101 };
   }
 }
 
-function saveStore(data: StoreData): void {
+function writeLocalStore(data: StoreData): void {
   try {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -67,8 +100,131 @@ function saveStore(data: StoreData): void {
   }
 }
 
+async function loadStore(): Promise<StoreData> {
+  if (PERSISTENT_DB_CONFIGURED) {
+    try {
+      const res = await fetch(
+        `${REDIS_REST_URL}/get/${encodeURIComponent(REDIS_STORE_KEY)}`,
+        {
+          headers: { Authorization: `Bearer ${REDIS_REST_TOKEN}` },
+        }
+      );
+      if (res.ok) {
+        const json = (await res.json()) as { result?: string | null };
+        if (typeof json.result === 'string' && json.result.length > 0) {
+          return normalizeStore(JSON.parse(json.result));
+        }
+        const seed = readLocalStore();
+        await saveStore(seed);
+        return seed;
+      }
+    } catch {
+      // Fallback to file store on transient network failure
+    }
+  }
+  return readLocalStore();
+}
+
+async function saveStore(data: StoreData): Promise<void> {
+  writeLocalStore(data);
+  if (PERSISTENT_DB_CONFIGURED) {
+    try {
+      await fetch(
+        `${REDIS_REST_URL}/set/${encodeURIComponent(REDIS_STORE_KEY)}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${REDIS_REST_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(JSON.stringify(data)),
+        }
+      );
+    } catch {
+      // Fallback already persisted locally
+    }
+  }
+}
+
 function createId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function timingSafeMatch(a: string, b: string): boolean {
+  const hashA = crypto.createHash('sha256').update(a).digest();
+  const hashB = crypto.createHash('sha256').update(b).digest();
+  return crypto.timingSafeEqual(hashA, hashB);
+}
+
+function signSessionToken(): string {
+  const exp = Date.now() + SESSION_TTL_MS;
+  const nonce = crypto.randomBytes(8).toString('hex');
+  const payload = Buffer.from(JSON.stringify({ exp, nonce })).toString('base64url');
+  const sig = crypto
+    .createHmac('sha256', SESSION_SECRET)
+    .update(payload)
+    .digest('base64url');
+  return `${payload}.${sig}`;
+}
+
+function verifySessionToken(token: string | undefined): boolean {
+  if (!token || !token.includes('.')) return false;
+  const [payload, sig] = token.split('.', 2);
+  if (!payload || !sig) return false;
+  const expectedSig = crypto
+    .createHmac('sha256', SESSION_SECRET)
+    .update(payload)
+    .digest('base64url');
+  if (!timingSafeMatch(sig, expectedSig)) return false;
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(payload, 'base64url').toString('utf-8')
+    ) as { exp?: number };
+    return typeof parsed.exp === 'number' && parsed.exp > Date.now();
+  } catch {
+    return false;
+  }
+}
+
+function parseCookies(header: string | undefined): Record<string, string> {
+  if (!header) return {};
+  const out: Record<string, string> = {};
+  for (const part of header.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq === -1) continue;
+    const key = part.slice(0, eq).trim();
+    const val = part.slice(eq + 1).trim();
+    if (key) {
+      try {
+        out[key] = decodeURIComponent(val);
+      } catch {
+        out[key] = val;
+      }
+    }
+  }
+  return out;
+}
+
+function extractSessionToken(req: Request): string | undefined {
+  const auth = req.headers.authorization;
+  if (auth && auth.startsWith('Bearer ')) {
+    const bearer = auth.slice(7).trim();
+    if (bearer) return bearer;
+  }
+  const cookies = parseCookies(req.headers.cookie);
+  return cookies[SESSION_COOKIE_NAME];
+}
+
+function isAdminAuthenticated(req: Request): boolean {
+  return verifySessionToken(extractSessionToken(req));
+}
+
+function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+  if (!isAdminAuthenticated(req)) {
+    res.status(401).json({ error: 'يلزم تسجيل الدخول لإدارة الورشة' });
+    return;
+  }
+  next();
 }
 
 async function fetchFacebookSenderName(
@@ -101,10 +257,60 @@ async function fetchFacebookSenderName(
 export function createApiApp(): Express {
   const app = express();
   app.set('trust proxy', 1);
-  app.use(express.json({ limit: '1mb' }));
+  app.use(express.json({ limit: '6mb' }));
 
   app.get('/api/health', (_req: Request, res: Response) => {
-    res.json({ ok: true, timestamp: new Date().toISOString() });
+    res.json({
+      ok: true,
+      persistentDbConfigured: PERSISTENT_DB_CONFIGURED,
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  // --- Admin Auth Routes ---
+  app.get('/api/auth/session', (req: Request, res: Response) => {
+    res.json({
+      authenticated: isAdminAuthenticated(req),
+      usingDefaultPassword: USING_DEFAULT_PASSWORD,
+      persistentDbConfigured: PERSISTENT_DB_CONFIGURED,
+    });
+  });
+
+  app.post('/api/auth/login', (req: Request, res: Response) => {
+    const { password } = req.body as { password?: string };
+    if (!password || typeof password !== 'string') {
+      res.status(400).json({ error: 'يرجى إدخال كلمة مرور الإدارة' });
+      return;
+    }
+
+    if (!timingSafeMatch(password.trim(), ADMIN_PASSWORD)) {
+      res.status(401).json({ error: 'كلمة المرور غير صحيحة' });
+      return;
+    }
+
+    const token = signSessionToken();
+    const isSecure =
+      req.secure || req.headers['x-forwarded-proto'] === 'https';
+
+    res.cookie(SESSION_COOKIE_NAME, token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: isSecure,
+      maxAge: SESSION_TTL_MS,
+      path: '/',
+    });
+
+    res.json({
+      ok: true,
+      token,
+      usingDefaultPassword: USING_DEFAULT_PASSWORD,
+      persistentDbConfigured: PERSISTENT_DB_CONFIGURED,
+    });
+  });
+
+  app.post('/api/auth/logout', (_req: Request, res: Response) => {
+    res.clearCookie(SESSION_COOKIE_NAME, { path: '/' });
+    res.json({ ok: true });
   });
 
   app.get('/privacy', (_req: Request, res: Response) => {
@@ -113,8 +319,8 @@ export function createApiApp(): Express {
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>سياسة الخصوصية - ماجدتال</title></head>
 <body style="font-family:system-ui,sans-serif;max-width:720px;margin:40px auto;padding:0 20px;line-height:1.8;color:#0f172a">
   <h1>سياسة الخصوصية</h1>
-  <p>تُستخدم هذه المنصة حصرياً لإدارة طلبات وأعمال ورشة الألومنيوم والمطابخ والرد على استفسارات العملاء الواردة إلى صفحة ماجدتال عبر فيسبوك ماسنجر.</p>
-  <p>يتم استخدام اسم العميل ونص الرسالة فقط لغرض الرد على الاستفسارات وتجهيز عروض الأسعار وأوامر الشغل، ولا تتم مشاركة أي بيانات مع أطراف خارجية.</p>
+  <p>تُستخدم هذه المنصة حصرياً لإدارة طلبات وأعمال ورشة الألومنيوم والمطابخ والرد على استفسارات العملاء الواردة عبر الموقع الإلكتروني أو صفحة ماجدتال على فيسبوك ماسنجر.</p>
+  <p>يتم استخدام اسم العميل ورقم الهاتف وتفاصيل المقاسات وصور الموقع فقط لغرض الرد على الاستفسارات وتجهيز عروض الأسعار وأوامر الشغل، ولا تتم مشاركة أي بيانات مع أطراف خارجية.</p>
   <p>للاستفسار أو طلب حذف البيانات: <strong>mohamedmaged_3@yahoo.com</strong></p>
 </body>
 </html>`);
@@ -126,7 +332,7 @@ export function createApiApp(): Express {
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>حذف بيانات المستخدم - ماجدتال</title></head>
 <body style="font-family:system-ui,sans-serif;max-width:720px;margin:40px auto;padding:0 20px;line-height:1.8;color:#0f172a">
   <h1>تعليمات حذف بيانات المستخدم</h1>
-  <p>إذا تواصلت معنا عبر صفحة فيسبوك وترغب في حذف سجل محادثتك وبيانات التواصل الخاصة بك من نظام إدارة الورشة:</p>
+  <p>إذا تواصلت معنا عبر الموقع أو صفحة فيسبوك وترغب في حذف سجل محادثتك وبيانات التواصل الخاصة بك من نظام إدارة الورشة:</p>
   <ol>
     <li>أرسل رسالة إلينا عبر صفحة فيسبوك أو عبر البريد الإلكتروني: <strong>mohamedmaged_3@yahoo.com</strong> بعنوان "طلب حذف البيانات".</li>
     <li>سيتم حذف جميع الرسائل وبيانات العميل المرتبطة من قاعدة بيانات الورشة خلال 48 ساعة.</li>
@@ -135,9 +341,9 @@ export function createApiApp(): Express {
 </html>`);
   });
 
-  // --- Orders API ---
-  app.get('/api/orders', (_req: Request, res: Response) => {
-    const store = ensureStore();
+  // --- Orders API (Admin Protected) ---
+  app.get('/api/orders', requireAdmin, async (_req: Request, res: Response) => {
+    const store = await loadStore();
     const sorted = [...store.orders].sort(
       (a, b) =>
         new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
@@ -145,14 +351,14 @@ export function createApiApp(): Express {
     res.json({ orders: sorted });
   });
 
-  app.post('/api/orders', (req: Request, res: Response) => {
+  app.post('/api/orders', requireAdmin, async (req: Request, res: Response) => {
     const body = req.body as Partial<WorkshopOrder>;
     if (!body.clientName || !body.clientName.trim()) {
       res.status(400).json({ error: 'اسم العميل مطلوب' });
       return;
     }
 
-    const store = ensureStore();
+    const store = await loadStore();
     const now = new Date().toISOString();
     const seq = store.nextOrderSeq;
     store.nextOrderSeq += 1;
@@ -191,14 +397,14 @@ export function createApiApp(): Express {
       }
     }
 
-    saveStore(store);
+    await saveStore(store);
     res.status(201).json({ order: newOrder });
   });
 
-  app.patch('/api/orders/:id', (req: Request, res: Response) => {
+  app.patch('/api/orders/:id', requireAdmin, async (req: Request, res: Response) => {
     const { id } = req.params;
     const body = req.body as Partial<WorkshopOrder>;
-    const store = ensureStore();
+    const store = await loadStore();
     const idx = store.orders.findIndex((o) => o.id === id);
 
     if (idx === -1) {
@@ -241,25 +447,25 @@ export function createApiApp(): Express {
     };
 
     store.orders[idx] = updated;
-    saveStore(store);
+    await saveStore(store);
     res.json({ order: updated });
   });
 
-  app.delete('/api/orders/:id', (req: Request, res: Response) => {
+  app.delete('/api/orders/:id', requireAdmin, async (req: Request, res: Response) => {
     const { id } = req.params;
-    const store = ensureStore();
+    const store = await loadStore();
     const before = store.orders.length;
     store.orders = store.orders.filter((o) => o.id !== id);
     if (store.orders.length === before) {
       res.status(404).json({ error: 'أمر الشغل غير موجود' });
       return;
     }
-    saveStore(store);
+    await saveStore(store);
     res.json({ ok: true });
   });
 
-  // --- Tool Iframe Embed Probe ---
-  app.post('/api/tools/probe', async (req: Request, res: Response) => {
+  // --- Tool Iframe Embed Probe (Admin Protected) ---
+  app.post('/api/tools/probe', requireAdmin, async (req: Request, res: Response) => {
     const { url } = req.body as { url?: string };
     if (!url || !url.startsWith('https://')) {
       res.status(400).json({ error: 'رابط غير صالح' });
@@ -326,6 +532,7 @@ export function createApiApp(): Express {
       webhookUrl: `${baseUrl}/api/facebook/webhook`,
       graphApiConfigured: Boolean(process.env.FB_PAGE_ACCESS_TOKEN),
       verifyTokenConfigured: Boolean(process.env.FB_VERIFY_TOKEN),
+      persistentDbConfigured: PERSISTENT_DB_CONFIGURED,
     });
   });
 
@@ -362,7 +569,7 @@ export function createApiApp(): Express {
       return;
     }
 
-    const store = ensureStore();
+    const store = await loadStore();
     const accessToken = process.env.FB_PAGE_ACCESS_TOKEN;
 
     for (const entry of body.entry || []) {
@@ -410,13 +617,13 @@ export function createApiApp(): Express {
       }
     }
 
-    saveStore(store);
+    await saveStore(store);
     res.status(200).send('EVENT_RECEIVED');
   });
 
-  // Fetch & Sync Conversations
-  app.get('/api/facebook/conversations', async (_req: Request, res: Response) => {
-    const store = ensureStore();
+  // Fetch & Sync Conversations (Admin Protected)
+  app.get('/api/facebook/conversations', requireAdmin, async (_req: Request, res: Response) => {
+    const store = await loadStore();
     const accessToken = process.env.FB_PAGE_ACCESS_TOKEN;
     let graphSyncError: string | null = null;
 
@@ -515,7 +722,7 @@ export function createApiApp(): Express {
               });
             }
           }
-          saveStore(store);
+          await saveStore(store);
         }
       } catch (err) {
         graphSyncError =
@@ -535,25 +742,33 @@ export function createApiApp(): Express {
     });
   });
 
-  // Log a customer inquiry manually
-  app.post('/api/facebook/inquiries', (req: Request, res: Response) => {
+  // Public Quote / Customer Inquiry Submission (also used by Admin Manual Add)
+  app.post('/api/facebook/inquiries', async (req: Request, res: Response) => {
     const body = req.body as {
       customerName?: string;
       customerPhone?: string;
       projectInterest?: string;
       initialMessage?: string;
+      attachmentName?: string;
+      attachmentDataUrl?: string;
     };
 
     if (!body.customerName || !body.customerName.trim()) {
       res.status(400).json({ error: 'اسم العميل مطلوب' });
       return;
     }
-    if (!body.initialMessage || !body.initialMessage.trim()) {
-      res.status(400).json({ error: 'نص رسالة العميل مطلوب' });
+
+    const hasValidAttachment =
+      typeof body.attachmentDataUrl === 'string' &&
+      body.attachmentDataUrl.startsWith('data:image/') &&
+      body.attachmentDataUrl.length <= 5 * 1024 * 1024;
+
+    if ((!body.initialMessage || !body.initialMessage.trim()) && !hasValidAttachment) {
+      res.status(400).json({ error: 'نص رسالة العميل أو صورة المقاسات مطلوب' });
       return;
     }
 
-    const store = ensureStore();
+    const store = await loadStore();
     const now = new Date().toISOString();
 
     const inquiry: FacebookInquiry = {
@@ -569,8 +784,14 @@ export function createApiApp(): Express {
         {
           id: createId('msg'),
           sender: 'customer',
-          text: body.initialMessage.trim(),
+          text: (body.initialMessage || '').trim() || 'مرفق صورة للمقاسات والتفاصيل',
           timestamp: now,
+          ...(hasValidAttachment
+            ? {
+                attachmentName: (body.attachmentName || 'صورة المقاسات').trim(),
+                attachmentDataUrl: body.attachmentDataUrl,
+              }
+            : {}),
         },
       ],
       createdAt: now,
@@ -578,12 +799,23 @@ export function createApiApp(): Express {
     };
 
     store.inquiries.unshift(inquiry);
-    saveStore(store);
-    res.status(201).json({ inquiry });
+    await saveStore(store);
+    res.status(201).json({
+      inquiry: {
+        id: inquiry.id,
+        customerName: inquiry.customerName,
+        projectInterest: inquiry.projectInterest,
+        status: inquiry.status,
+        createdAt: inquiry.createdAt,
+        updatedAt: inquiry.updatedAt,
+        messages: inquiry.messages,
+        sourceType: inquiry.sourceType,
+      },
+    });
   });
 
-  // Reply to a Facebook conversation
-  app.post('/api/facebook/reply', async (req: Request, res: Response) => {
+  // Reply to a Facebook conversation (Admin Protected)
+  app.post('/api/facebook/reply', requireAdmin, async (req: Request, res: Response) => {
     const { inquiryId, text } = req.body as {
       inquiryId?: string;
       text?: string;
@@ -593,7 +825,7 @@ export function createApiApp(): Express {
       return;
     }
 
-    const store = ensureStore();
+    const store = await loadStore();
     const idx = store.inquiries.findIndex((i) => i.id === inquiryId);
     if (idx === -1) {
       res.status(404).json({ error: 'المحادثة غير موجودة' });
@@ -649,20 +881,20 @@ export function createApiApp(): Express {
     inquiry.updatedAt = now;
 
     store.inquiries[idx] = inquiry;
-    saveStore(store);
+    await saveStore(store);
     res.json({ inquiry, sentViaGraphApi, graphWarning });
   });
 
-  app.delete('/api/facebook/inquiries/:id', (req: Request, res: Response) => {
+  app.delete('/api/facebook/inquiries/:id', requireAdmin, async (req: Request, res: Response) => {
     const { id } = req.params;
-    const store = ensureStore();
+    const store = await loadStore();
     const before = store.inquiries.length;
     store.inquiries = store.inquiries.filter((i) => i.id !== id);
     if (store.inquiries.length === before) {
       res.status(404).json({ error: 'المحادثة غير موجودة' });
       return;
     }
-    saveStore(store);
+    await saveStore(store);
     res.json({ ok: true });
   });
 

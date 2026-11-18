@@ -3,20 +3,80 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>مركز إدارة ورشة الألومنيوم والمطابخ</title>
-    <meta name="description" content="لوحة تحكم مركزية لربط برامج التخصيم والرسم ثلاثي الأبعاد وحسابات التكلفة وإدارة المحل مع رسائل عملاء صفحة الفيسبوك لورشة الألومنيوم." />
-    <meta property="og:title" content="مركز إدارة ورشة الألومنيوم والمطابخ" />
-    <meta property="og:description" content="لوحة تحكم مركزية لربط برامج التخصيم والرسم ثلاثي الأبعاد وحسابات التكلفة وإدارة المحل مع رسائل عملاء صفحة الفيسبوك." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>ماجدتال للألومنيوم والمطابخ | تصميم 3D وتنفيذ مطابخ وشبابيك بدقة هندسية</title>
+    <meta
+      name="description"
+      content="ورشة ماجدتال المتخصصة في تصميم وتنفيذ مطابخ الكلادينج والألوميتال والشبابيك الألومنيوم العازلة للصوت والحرارة مع معاينة 3D وتخصيم دقيق بالملليمتر. اطلب مقايسة مجانية الآن."
+    />
     <meta property="og:type" content="website" />
+    <meta property="og:locale" content="ar_EG" />
+    <meta property="og:site_name" content="ماجدتال للألومنيوم والمطابخ" />
+    <meta
+      property="og:title"
+      content="ماجدتال للألومنيوم والمطابخ | تصميم 3D وتنفيذ مطابخ وشبابيك بدقة هندسية"
+    />
+    <meta
+      property="og:description"
+      content="معاينة ثلاثية الأبعاد قبل التصنيع، تخصيم رقمي بالملليمتر، وتنفيذ مطابخ الكلادينج والشبابيك العازلة. احسب التكلفة التقديرية واطلب معاينة الآن."
+    />
+    <meta
+      property="og:image"
+      content="/src/assets/images/hero_aluminum_kitchen_1794999241476.jpg"
+    />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="ماجدتال للألومنيوم والمطابخ | تصميم 3D وتنفيذ مطابخ وشبابيك"
+    />
+    <meta
+      name="twitter:description"
+      content="تصميم وتصنيع المطابخ الألومنيوم والكلادينج والشبابيك العازلة للصوت والحرارة بدقة هندسية."
+    />
+    <meta
+      name="twitter:image"
+      content="/src/assets/images/hero_aluminum_kitchen_1794999241476.jpg"
+    />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "HomeAndConstructionBusiness",
+        "name": "ماجدتال للألومنيوم والمطابخ",
+        "description": "تصميم وتصنيع مطابخ الألومنيوم والكلادينج والشبابيك والأبواب الألومنيوم العازلة مع معاينة ثلاثية الأبعاد وتخصيم هندسي دقيق.",
+        "email": "mohamedmaged_3@yahoo.com",
+        "sameAs": [
+          "https://www.facebook.com/profile.php?id=61596916040640"
+        ],
+        "areaServed": "EG",
+        "knowsAbout": [
+          "مطابخ ألومنيوم",
+          "مطابخ كلادينج",
+          "مطابخ خشمونيوم",
+          "شبابيك ألومنيوم PS",
+          "شبابيك جامبو دبل جلاس",
+          "تصميم مطابخ ثلاثي الأبعاد"
+        ]
+      }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('alm_theme');
+          var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          if (saved === 'dark' || (!saved && prefersDark)) {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
-  <body class="bg-slate-50 text-slate-900 antialiased selection:bg-blue-100 selection:text-blue-900">
+  <body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 antialiased selection:bg-blue-100 dark:selection:bg-blue-900/50 selection:text-blue-900 dark:selection:text-blue-100">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

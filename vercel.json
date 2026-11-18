@@ -7,6 +7,6 @@
     { "source": "/api/(.*)", "destination": "/api/index" },
     { "source": "/privacy", "destination": "/api/index" },
     { "source": "/data-deletion", "destination": "/api/index" },
-    { "source": "/((?!api/|assets/|privacy|data-deletion).*)", "destination": "/index.html" }
+    { "source": "/((?!api/|assets/|src/assets/|favicon\\.svg|privacy|data-deletion).*)", "destination": "/index.html" }
   ]
 }

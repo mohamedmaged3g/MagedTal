@@ -34,14 +34,14 @@ export const TopBar: React.FC<TopBarProps> = ({
   }
 
   return (
-    <header className="sticky top-0 z-30 h-16 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between gap-8 shrink-0">
+    <header className="sticky top-0 z-30 h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 flex items-center justify-between gap-8 shrink-0">
       {/* Zone 1 & 2: Mobile menu button + Breadcrumb Trail */}
       <div className="flex items-center gap-3 min-w-0">
         <button
           type="button"
           onClick={onOpenMobileMenu}
           aria-label="فتح القائمة"
-          className="lg:hidden p-2 -mr-2 text-slate-600 hover:text-slate-900 rounded-md"
+          className="lg:hidden p-2 -mr-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white rounded-md"
         >
           <Menu className="w-5 h-5" />
         </button>
@@ -50,24 +50,24 @@ export const TopBar: React.FC<TopBarProps> = ({
           aria-label="مسار الصفحة"
           className="flex items-center gap-2 text-sm min-w-0 truncate"
         >
-          <span className="font-semibold text-slate-900 whitespace-nowrap shrink-0">
+          <span className="font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap shrink-0">
             الورشة المركزية
           </span>
-          <span className="text-slate-400 shrink-0" aria-hidden="true">
+          <span className="text-slate-400 dark:text-slate-500 shrink-0" aria-hidden="true">
             /
           </span>
-          <span className="text-slate-600 whitespace-nowrap shrink-0">
+          <span className="text-slate-600 dark:text-slate-300 whitespace-nowrap shrink-0">
             {sectionTitle}
           </span>
           {detailTitle && (
             <>
               <span
-                className="text-slate-400 hidden sm:inline shrink-0"
+                className="text-slate-400 dark:text-slate-500 hidden sm:inline shrink-0"
                 aria-hidden="true"
               >
                 /
               </span>
-              <span className="text-slate-900 font-medium truncate hidden sm:inline">
+              <span className="text-slate-900 dark:text-slate-100 font-medium truncate hidden sm:inline">
                 {detailTitle}
               </span>
             </>
@@ -80,7 +80,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           type="button"
           onClick={onNewOrder}
-          className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+          className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-500 rounded-lg transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900"
         >
           <Plus className="w-4 h-4 shrink-0" />
           <span>أمر شغل جديد</span>
