@@ -106,21 +106,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           }}
           className="flex items-center gap-3 text-right focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 rounded-md"
         >
-          <span className="w-8 h-8 rounded-md bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950 flex items-center justify-center shrink-0">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              className="w-4 h-4"
-              aria-hidden="true"
-            >
-              <path d="M4 4h16v16H4z" />
-              <path d="M4 12h16M12 4v16" />
-            </svg>
-          </span>
+          <img
+            src="/assets/aistudio/image_3de2cff6.png"
+            alt="شعار ماجدتال"
+            className="w-9 h-9 rounded-lg bg-white p-0.5 object-contain border border-slate-200 dark:border-slate-700 shrink-0"
+          />
           <span className="font-bold text-sm tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap">
-            ورشة الألومنيوم المركزية
+            ورشة ماجدتال المركزية
           </span>
         </button>
 

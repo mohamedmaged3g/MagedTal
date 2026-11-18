@@ -56,6 +56,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       order.clientName.toLowerCase().includes(q) ||
       order.code.toLowerCase().includes(q) ||
       order.projectType.toLowerCase().includes(q) ||
+      (order.profileSystem || '').toLowerCase().includes(q) ||
       getProfileTypeLabel(orderProfile).toLowerCase().includes(q) ||
       order.clientPhone.includes(q);
     return matchesProfile && matchesStage && matchesSearch;
@@ -246,6 +247,11 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                         >
                           {getProfileTypeLabel(orderProfile)}
                         </span>
+                        {order.profileSystem && (
+                          <p className="text-[11px] font-normal text-slate-500 dark:text-slate-400 mt-0.5">
+                            {order.profileSystem}
+                          </p>
+                        )}
                       </td>
 
                       <td className="py-3 px-4 max-w-xs">

@@ -21,7 +21,11 @@ import {
   X,
   ZoomIn,
 } from 'lucide-react';
-import { FACEBOOK_PAGE_URL } from '../data/tools.ts';
+import {
+  ALUMINUM_PROFILE_SYSTEMS,
+  FACEBOOK_PAGE_URL,
+  UPVC_PROFILE_SYSTEMS,
+} from '../data/tools.ts';
 import type {
   FacebookInquiry,
   ProfileCategory,
@@ -40,6 +44,7 @@ interface WebsiteViewProps {
     customerName: string;
     customerPhone: string;
     profileType?: ProfileCategory;
+    profileSystem?: string;
     projectInterest: string;
     initialMessage: string;
     attachmentName?: string;
@@ -143,7 +148,7 @@ const ESTIMATOR_OPTIONS: EstimatorOption[] = [
   },
   {
     id: 'upvc',
-    label: 'شبابيك وأبواب UPVC عازلة (دبل جلاس)',
+    label: 'شبابيك وأبواب UPVC (Wintech / Pimapen / Kompen / Rehau)',
     formInterest: 'شبابيك وأبواب UPVC',
     unitLabel: 'المساحة الإجمالية بالمتر المربع (م²)',
     minRate: 4400,
@@ -216,11 +221,18 @@ const PROFILE_COMPARISON = [
     tier: 'معماري فائق',
   },
   {
-    name: 'قطاعات UPVC عازلة',
-    insulation: 'أعلى عزل حراري وصوتي ومنع تسرب المياه بلحام حراري محكم',
-    glazing: 'زجاج دبل جلاس 24 مم (شفاف / عاكس / أرجون)',
-    bestUse: 'الشبابيك المفصلية والقلاب والبلكونات في المناطق الحارة أو الصاخبة',
-    tier: 'عزل حراري وصوتي فائق',
+    name: 'UPVC تركي (Wintech · Pimapen · Kompen · Egepen · Adopen)',
+    insulation: 'عزل حراري وصوتي ممتاز بلحام حراري محكم وتدعيم صلب مجلفن',
+    glazing: 'زجاج دبل جلاس 20–24 مم (شفاف / عاكس)',
+    bestUse: 'الشبابيك المفصلية والقلاب والجرار للغرف والبلكونات',
+    tier: 'تركي عالي العزل',
+  },
+  {
+    name: 'UPVC أوروبي (Rehau · Deceuninck · Kömmerling)',
+    insulation: 'أقصى عزل صوتي وحراري متعدد الغرف (5–6 غرف عزل)',
+    glazing: 'زجاج دبل أو تريبل جلاس مع حقن غاز أرجون',
+    bestUse: 'الفلل والواجهات المشمسة والشوارع الرئيسية الصاخبة',
+    tier: 'ألماني / أوروبي فاخر',
   },
   {
     name: 'مطابخ كلادينج',
@@ -375,8 +387,8 @@ const FAQ_ITEMS = [
     a: 'نعم، عند اختيار قطاعات UPVC بلحام حراري أو قطاعات PS كبير وجامبو/تانجو مع زجاج مزدوج (دبل جلاس) وكاوتش عزل مزدوج، يتم تقليل الضوضاء والأتربة والحرارة بشكل ملحوظ.',
   },
   {
-    q: 'متى أختار قطاعات UPVC بدلاً من الألومنيوم؟',
-    a: 'يُفضل UPVC في الواجهات المشمسة أو الشوارع المزدحمة لأقصى عزل حراري وصوتي، بينما يمتاز الألومنيوم (PS وجامبو وتانجو) بتنوع أكبر في الألوان المعدنية وقدرة تحمّل ممتازة للفتحات الكبيرة.',
+    q: 'ما أشهر أسماء قطاعات UPVC المتوفرة لديكم ومتى أختارها؟',
+    a: 'ننفذ أشهر قطاعات UPVC التركية والأوروبية مثل وينتك (Wintech) وبيمابن (Pimapen) وكومبين (Kompen) وإيجيبن (Egepen) وأدوبن (Adopen)، بالإضافة للقطاعات الألمانية والأوروبية مثل ريهاو (Rehau) وديكونينك (Deceuninck) وكوميرلينج (Kömmerling). يُفضل UPVC في الواجهات المشمسة أو الشوارع المزدحمة لأقصى عزل حراري وصوتي، بينما يمتاز الألومنيوم (PS وجامبو وتانجو) بتنوع أكبر في الألوان المعدنية وقدرة تحمّل ممتازة للفتحات الكبيرة.',
   },
   {
     q: 'هل يوجد ضمان على التركيب والإكسسوارات؟',
@@ -407,6 +419,7 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [projectInterest, setProjectInterest] = useState('مطبخ كلادينج / ألوميتال');
+  const [profileSystem, setProfileSystem] = useState('');
   const [dimensionsText, setDimensionsText] = useState('');
   const [attachmentName, setAttachmentName] = useState<string | null>(null);
   const [attachmentDataUrl, setAttachmentDataUrl] = useState<string | null>(null);
@@ -565,14 +578,16 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
 
     setSubmitting(true);
     try {
+      const profileNote = profileSystem ? ` · القطاع: ${profileSystem}` : '';
       const created = (await onSubmitQuoteRequest({
         customerName: cleanName,
         customerPhone: cleanPhone,
         profileType: inferredProfileType,
+        profileSystem: profileSystem || undefined,
         projectInterest,
         initialMessage: cleanNotes
-          ? `طلب مقايسة من الموقع (${selectedSwatch.name}): ${cleanNotes}`
-          : `طلب مقايسة من الموقع (مرفق صورة للمقاسات · اللون: ${selectedSwatch.name})`,
+          ? `طلب مقايسة من الموقع (${selectedSwatch.name}${profileNote}): ${cleanNotes}`
+          : `طلب مقايسة من الموقع (مرفق صورة للمقاسات · اللون: ${selectedSwatch.name}${profileNote})`,
         attachmentName: attachmentName || undefined,
         attachmentDataUrl: attachmentDataUrl || undefined,
       })) as FacebookInquiry | undefined;
@@ -584,6 +599,7 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
       }
       setCustomerName('');
       setCustomerPhone('');
+      setProfileSystem('');
       setDimensionsText('');
       handleRemoveAttachment();
     } catch (err) {
@@ -649,12 +665,19 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col">
       {/* Formal Printable Estimate Sheet (Visible only during window.print()) */}
       <div className="hidden print:block p-8 bg-white text-slate-900" dir="rtl">
-        <div className="border-b-2 border-slate-900 pb-4 mb-6 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">ماجدتال للألومنيوم والمطابخ الحديثة</h1>
-            <p className="text-sm text-slate-600 mt-1">
-              ملخص تقدير مقايسة مبدئية من الموقع الرسمي
-            </p>
+        <div className="border-b-2 border-slate-900 pb-4 mb-6 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <img
+              src="/assets/aistudio/image_3de2cff6.png"
+              alt="شعار ماجدتال"
+              className="w-14 h-14 rounded-lg bg-white p-0.5 object-contain border border-slate-200 shrink-0"
+            />
+            <div>
+              <h1 className="text-2xl font-bold">ماجدتال للألومنيوم وUPVC والمطابخ</h1>
+              <p className="text-sm text-slate-600 mt-1">
+                ملخص تقدير مقايسة مبدئية من الموقع الرسمي
+              </p>
+            </div>
           </div>
           <div className="text-left text-xs font-mono text-slate-600">
             <p>https://maged-tal.vercel.app</p>
@@ -704,9 +727,11 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
               href="#top"
               className="flex items-center gap-2.5 text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap shrink-0"
             >
-              <span className="w-8 h-8 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950 flex items-center justify-center text-sm font-mono font-bold">
-                M
-              </span>
+              <img
+                src="/assets/aistudio/image_3de2cff6.png"
+                alt="شعار ماجدتال"
+                className="w-10 h-10 rounded-lg bg-white p-0.5 object-contain border border-slate-200 dark:border-slate-700 shadow-xs shrink-0"
+              />
               <span>ماجدتال</span>
             </a>
           </div>
@@ -935,7 +960,7 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
                       شبابيك وأبواب ألومنيوم وUPVC عازلة (جرار · مفصلي · قلاب)
                     </h3>
                     <p className="mt-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                      تنفيذ قطاعات PS صغير وكبير وقطاعات التانجو والجامبو، بالإضافة إلى قطاعات UPVC العازلة بالحام الحراري مع زجاج مزدوج (دبل جلاس) لعزل الأتربة والضوضاء والحرارة.
+                      تنفيذ قطاعات الألومنيوم (PS صغير وكبير، التانجو والجامبو)، وقطاعات UPVC العازلة بالحام الحراري (Wintech · Pimapen · Kompen · Egepen · Adopen · Deceuninck · Rehau · Kömmerling) مع زجاج دبل جلاس لعزل الأتربة والضوضاء والحرارة.
                     </p>
                   </div>
                 </div>
@@ -1503,7 +1528,14 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
                       <p className="text-slate-600 dark:text-slate-300">
                         {trackingResult.profileTypeLabel && (
                           <>
-                            نوع القطاع: <strong>{trackingResult.profileTypeLabel}</strong> ·{' '}
+                            نوع القطاع:{' '}
+                            <strong>
+                              {trackingResult.profileTypeLabel}
+                              {trackingResult.profileSystem
+                                ? ` (${trackingResult.profileSystem})`
+                                : ''}
+                            </strong>{' '}
+                            ·{' '}
                           </>
                         )}
                         الحالة: <strong>{trackingResult.statusLabel}</strong>
@@ -1601,31 +1633,63 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                      نوع الطلب
-                    </label>
-                    <select
-                      value={projectInterest}
-                      onChange={(e) => setProjectInterest(e.target.value)}
-                      className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
-                    >
-                      <option value="مطبخ كلادينج / ألوميتال">
-                        مطبخ كلادينج / ألوميتال
-                      </option>
-                      <option value="شبابيك وأبواب ألومنيوم">
-                        شبابيك وأبواب ألومنيوم (PS / جامبو / تانجو)
-                      </option>
-                      <option value="شبابيك وأبواب UPVC">
-                        شبابيك وأبواب UPVC عازلة
-                      </option>
-                      <option value="تصميم مطبخ 3D ومقايسة">
-                        تصميم مطبخ 3D ومقايسة
-                      </option>
-                      <option value="تجهيز واجهة أو شقة كاملة">
-                        تجهيز واجهة أو شقة كاملة
-                      </option>
-                    </select>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                        نوع الطلب
+                      </label>
+                      <select
+                        value={projectInterest}
+                        onChange={(e) => {
+                          setProjectInterest(e.target.value);
+                          setProfileSystem('');
+                        }}
+                        className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+                      >
+                        <option value="مطبخ كلادينج / ألوميتال">
+                          مطبخ كلادينج / ألوميتال
+                        </option>
+                        <option value="شبابيك وأبواب ألومنيوم">
+                          شبابيك وأبواب ألومنيوم (PS / جامبو / تانجو)
+                        </option>
+                        <option value="شبابيك وأبواب UPVC">
+                          شبابيك وأبواب UPVC عازلة
+                        </option>
+                        <option value="تصميم مطبخ 3D ومقايسة">
+                          تصميم مطبخ 3D ومقايسة
+                        </option>
+                        <option value="تجهيز واجهة أو شقة كاملة">
+                          تجهيز واجهة أو شقة كاملة
+                        </option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="quote-profile-system"
+                        className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5"
+                      >
+                        اسم القطاع المفضل (اختياري)
+                      </label>
+                      <select
+                        id="quote-profile-system"
+                        value={profileSystem}
+                        onChange={(e) => setProfileSystem(e.target.value)}
+                        className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+                      >
+                        <option value="">يحدد بعد المعاينة / غير محدد</option>
+                        {(/upvc/i.test(projectInterest)
+                          ? UPVC_PROFILE_SYSTEMS
+                          : projectInterest === 'تجهيز واجهة أو شقة كاملة'
+                          ? [...UPVC_PROFILE_SYSTEMS, ...ALUMINUM_PROFILE_SYSTEMS]
+                          : ALUMINUM_PROFILE_SYSTEMS
+                        ).map((sys) => (
+                          <option key={sys.id} value={sys.name}>
+                            {sys.name} ({sys.origin})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
                   <div>
@@ -1780,13 +1844,20 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
       {/* Quiet Editorial Footer */}
       <footer className="print:hidden bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-8">
         <div className="max-w-[1280px] mx-auto px-4 sm:px-8 flex flex-wrap items-center justify-between gap-6">
-          <div>
-            <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
-              ماجدتال للألومنيوم والمطابخ
-            </p>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              تصميم ثلاثي الأبعاد · تخصيم دقيق · تصنيع وتركيب بضمان 5 سنوات
-            </p>
+          <div className="flex items-center gap-3">
+            <img
+              src="/assets/aistudio/image_3de2cff6.png"
+              alt="شعار ماجدتال"
+              className="w-11 h-11 rounded-lg bg-white p-0.5 object-contain border border-slate-200 dark:border-slate-700 shrink-0"
+            />
+            <div>
+              <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                ماجدتال للألومنيوم وUPVC والمطابخ
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                تصميم ثلاثي الأبعاد · تخصيم دقيق · تصنيع وتركيب بضمان 5 سنوات
+              </p>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-5 text-xs text-slate-600 dark:text-slate-400">

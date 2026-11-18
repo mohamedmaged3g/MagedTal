@@ -452,6 +452,9 @@ export function createApiApp(): Express {
       clientPhone: (body.clientPhone || '').trim(),
       source: (body.source as OrderSource) || 'direct',
       profileType,
+      ...(typeof body.profileSystem === 'string' && body.profileSystem.trim()
+        ? { profileSystem: body.profileSystem.trim() }
+        : {}),
       projectType: (
         body.projectType ||
         (profileType === 'upvc' ? 'شبابيك وأبواب UPVC' : 'مطبخ ألومنيوم')
@@ -518,6 +521,10 @@ export function createApiApp(): Express {
         body.profileType !== undefined
           ? normalizeProfileType(body.profileType, nextProjectType)
           : normalizeProfileType(existing.profileType, nextProjectType),
+      profileSystem:
+        body.profileSystem !== undefined
+          ? body.profileSystem.trim() || undefined
+          : existing.profileSystem,
       projectType: nextProjectType,
       dimensionsNote:
         body.dimensionsNote !== undefined
@@ -870,6 +877,7 @@ export function createApiApp(): Express {
       tracking: {
         referenceCode: inquiry.referenceCode,
         profileTypeLabel: PROFILE_LABELS[resolvedProfileType],
+        profileSystem: linkedOrder?.profileSystem || inquiry.profileSystem,
         projectInterest: inquiry.projectInterest,
         status: inquiry.status,
         statusLabel,
@@ -894,6 +902,7 @@ export function createApiApp(): Express {
       customerName?: string;
       customerPhone?: string;
       profileType?: ProfileCategory;
+      profileSystem?: string;
       projectInterest?: string;
       initialMessage?: string;
       attachmentName?: string;
@@ -931,6 +940,9 @@ export function createApiApp(): Express {
       customerName: body.customerName.trim(),
       customerPhone: (body.customerPhone || '').trim(),
       profileType,
+      ...(typeof body.profileSystem === 'string' && body.profileSystem.trim()
+        ? { profileSystem: body.profileSystem.trim() }
+        : {}),
       projectInterest: (
         body.projectInterest || 'استفسار ألومنيوم / UPVC / مطبخ'
       ).trim(),
@@ -962,6 +974,7 @@ export function createApiApp(): Express {
         referenceCode: inquiry.referenceCode,
         customerName: inquiry.customerName,
         profileType: inquiry.profileType,
+        profileSystem: inquiry.profileSystem,
         projectInterest: inquiry.projectInterest,
         status: inquiry.status,
         createdAt: inquiry.createdAt,

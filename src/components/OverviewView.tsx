@@ -302,7 +302,8 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                         <span className="truncate">{order.clientName}</span>
                       </div>
                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-                        {getProfileTypeLabel(order.profileType)} · {order.projectType} · {stageInfo?.label}
+                        {getProfileTypeLabel(order.profileType)}
+                        {order.profileSystem ? ` (${order.profileSystem})` : ''} · {order.projectType} · {stageInfo?.label}
                       </p>
                     </div>
                     <div className="text-left shrink-0">

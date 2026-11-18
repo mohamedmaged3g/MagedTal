@@ -14,9 +14,11 @@ import {
   X,
 } from 'lucide-react';
 import {
+  ALUMINUM_PROFILE_SYSTEMS,
   FACEBOOK_PAGE_ID,
   FACEBOOK_PAGE_URL,
   PROFILE_TYPES,
+  UPVC_PROFILE_SYSTEMS,
   getProfileTypeLabel,
 } from '../data/tools.ts';
 import type {
@@ -36,6 +38,7 @@ interface FacebookInboxViewProps {
     customerName: string;
     customerPhone: string;
     profileType?: ProfileCategory;
+    profileSystem?: string;
     projectInterest: string;
     initialMessage: string;
   }) => Promise<unknown>;
@@ -75,6 +78,7 @@ export const FacebookInboxView: React.FC<FacebookInboxViewProps> = ({
   const [newCustomerName, setNewCustomerName] = useState('');
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
   const [newProfileType, setNewProfileType] = useState<ProfileCategory>('aluminum');
+  const [newProfileSystem, setNewProfileSystem] = useState('');
   const [newProjectInterest, setNewProjectInterest] = useState('مطبخ ألومنيوم');
   const [newMessage, setNewMessage] = useState('');
   const [creating, setCreating] = useState(false);
@@ -132,12 +136,14 @@ export const FacebookInboxView: React.FC<FacebookInboxViewProps> = ({
         customerName: newCustomerName.trim(),
         customerPhone: newCustomerPhone.trim(),
         profileType: newProfileType,
+        profileSystem: newProfileSystem || undefined,
         projectInterest: newProjectInterest.trim(),
         initialMessage: newMessage.trim(),
       });
       setNewCustomerName('');
       setNewCustomerPhone('');
       setNewProfileType('aluminum');
+      setNewProfileSystem('');
       setNewProjectInterest('مطبخ ألومنيوم');
       setNewMessage('');
       setShowAddModal(false);
@@ -433,6 +439,9 @@ export const FacebookInboxView: React.FC<FacebookInboxViewProps> = ({
                       <>
                         <span className="font-semibold text-slate-700 dark:text-slate-300">
                           {getProfileTypeLabel(activeInquiry.profileType)}
+                          {activeInquiry.profileSystem
+                            ? ` (${activeInquiry.profileSystem})`
+                            : ''}
                         </span>
                         {' · '}
                       </>
@@ -616,6 +625,7 @@ export const FacebookInboxView: React.FC<FacebookInboxViewProps> = ({
                     onChange={(e) => {
                       const next = e.target.value as ProfileCategory;
                       setNewProfileType(next);
+                      setNewProfileSystem('');
                       if (next === 'upvc' && newProjectInterest === 'مطبخ ألومنيوم') {
                         setNewProjectInterest('شبابيك وأبواب UPVC');
                       } else if (
@@ -637,16 +647,37 @@ export const FacebookInboxView: React.FC<FacebookInboxViewProps> = ({
 
                 <div>
                   <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                    نوع الطلب
+                    اسم القطاع
                   </label>
-                  <input
-                    type="text"
-                    value={newProjectInterest}
-                    onChange={(e) => setNewProjectInterest(e.target.value)}
-                    placeholder="مطبخ كلادينج / شبابيك جرار..."
-                    className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
-                  />
+                  <select
+                    value={newProfileSystem}
+                    onChange={(e) => setNewProfileSystem(e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  >
+                    <option value="">غير محدد</option>
+                    {(newProfileType === 'upvc'
+                      ? UPVC_PROFILE_SYSTEMS
+                      : ALUMINUM_PROFILE_SYSTEMS
+                    ).map((sys) => (
+                      <option key={sys.id} value={sys.name}>
+                        {sys.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                  نوع الطلب
+                </label>
+                <input
+                  type="text"
+                  value={newProjectInterest}
+                  onChange={(e) => setNewProjectInterest(e.target.value)}
+                  placeholder="مطبخ كلادينج / شبابيك جرار..."
+                  className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+                />
               </div>
 
               <div>

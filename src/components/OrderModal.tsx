@@ -1,6 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import { ORDER_STAGES, PROFILE_TYPES, WORKSHOP_TOOLS } from '../data/tools.ts';
+import {
+  ALUMINUM_PROFILE_SYSTEMS,
+  ORDER_STAGES,
+  PROFILE_TYPES,
+  UPVC_PROFILE_SYSTEMS,
+  WORKSHOP_TOOLS,
+} from '../data/tools.ts';
 import type {
   OrderSource,
   OrderStage,
@@ -17,6 +23,7 @@ interface OrderModalProps {
     clientPhone?: string;
     source?: OrderSource;
     profileType?: ProfileCategory;
+    profileSystem?: string;
     projectType?: string;
     dimensionsNote?: string;
     linkedInquiryId?: string;
@@ -28,6 +35,7 @@ interface OrderModalProps {
     clientPhone: string;
     source: OrderSource;
     profileType: ProfileCategory;
+    profileSystem?: string;
     projectType: string;
     dimensionsNote: string;
     stage: OrderStage;
@@ -49,6 +57,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
   const [clientPhone, setClientPhone] = useState('');
   const [source, setSource] = useState<OrderSource>('direct');
   const [profileType, setProfileType] = useState<ProfileCategory>('aluminum');
+  const [profileSystem, setProfileSystem] = useState('');
   const [projectType, setProjectType] = useState('مطبخ ألومنيوم');
   const [dimensionsNote, setDimensionsNote] = useState('');
   const [stage, setStage] = useState<OrderStage>('design_3d');
@@ -71,6 +80,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
             ? 'upvc'
             : 'aluminum')
       );
+      setProfileSystem(initialOrder.profileSystem || '');
       setProjectType(initialOrder.projectType);
       setDimensionsNote(initialOrder.dimensionsNote);
       setStage(initialOrder.stage);
@@ -87,6 +97,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
       setClientPhone(prefill.clientPhone || '');
       setSource(prefill.source || 'facebook');
       setProfileType(inferredProfile);
+      setProfileSystem(prefill.profileSystem || '');
       setProjectType(
         prefill.projectType ||
           (inferredProfile === 'upvc' ? 'شبابيك وأبواب UPVC' : 'مطبخ ألومنيوم')
@@ -103,6 +114,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
       setClientPhone('');
       setSource('direct');
       setProfileType('aluminum');
+      setProfileSystem('');
       setProjectType('مطبخ ألومنيوم');
       setDimensionsNote('');
       setStage('design_3d');
@@ -114,8 +126,16 @@ export const OrderModal: React.FC<OrderModalProps> = ({
 
   if (!isOpen) return null;
 
+  const availableProfileSystems =
+    profileType === 'upvc' ? UPVC_PROFILE_SYSTEMS : ALUMINUM_PROFILE_SYSTEMS;
+
   const handleProfileTypeChange = (nextProfile: ProfileCategory) => {
     setProfileType(nextProfile);
+    const nextList =
+      nextProfile === 'upvc' ? UPVC_PROFILE_SYSTEMS : ALUMINUM_PROFILE_SYSTEMS;
+    if (!nextList.some((item) => item.name === profileSystem)) {
+      setProfileSystem('');
+    }
     if (!initialOrder) {
       if (nextProfile === 'upvc' && projectType === 'مطبخ ألومنيوم') {
         setProjectType('شبابيك وأبواب UPVC');
@@ -150,6 +170,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
         clientPhone: clientPhone.trim(),
         source,
         profileType,
+        profileSystem: profileSystem.trim() || undefined,
         projectType:
           projectType.trim() ||
           (profileType === 'upvc' ? 'شبابيك وأبواب UPVC' : 'مطبخ ألومنيوم'),
@@ -251,17 +272,39 @@ export const OrderModal: React.FC<OrderModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                نوع العمل
+              <label
+                htmlFor="order-profile-system"
+                className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5"
+              >
+                اسم القطاع / النظام
               </label>
-              <input
-                type="text"
-                value={projectType}
-                onChange={(e) => setProjectType(e.target.value)}
-                placeholder="مطبخ كلادينج / شبابيك ألومنيوم أو UPVC..."
-                className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
-              />
+              <select
+                id="order-profile-system"
+                value={profileSystem}
+                onChange={(e) => setProfileSystem(e.target.value)}
+                className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+              >
+                <option value="">غير محدد / يحدد بالمعاينة</option>
+                {availableProfileSystems.map((sys) => (
+                  <option key={sys.id} value={sys.name}>
+                    {sys.name} ({sys.origin})
+                  </option>
+                ))}
+              </select>
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+              نوع العمل
+            </label>
+            <input
+              type="text"
+              value={projectType}
+              onChange={(e) => setProjectType(e.target.value)}
+              placeholder="مطبخ كلادينج / شبابيك ألومنيوم أو UPVC..."
+              className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+            />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

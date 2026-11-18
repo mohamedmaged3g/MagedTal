@@ -13,7 +13,7 @@ export default defineConfig(() => {
       VitePWA({
         registerType: 'autoUpdate',
         includeAssets: [
-          'favicon.svg',
+          'assets/aistudio/image_3de2cff6.png',
           'apple-touch-icon.png',
           'pwa-192x192.png',
           'pwa-512x512.png',

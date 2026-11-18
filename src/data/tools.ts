@@ -8,6 +8,103 @@ export const PROFILE_TYPES: { id: ProfileCategory; label: string }[] = [
   { id: 'upvc', label: 'UPVC' },
 ];
 
+export interface ProfileSystemOption {
+  id: string;
+  name: string;
+  origin: string;
+  summary: string;
+}
+
+export const UPVC_PROFILE_SYSTEMS: ProfileSystemOption[] = [
+  {
+    id: 'wintech',
+    name: 'وينتك (Wintech)',
+    origin: 'تركي',
+    summary: 'متعدد الغرف بعزل حراري وصوتي ممتاز للأنظمة الجرار والمفصلية',
+  },
+  {
+    id: 'pimapen',
+    name: 'بيمابن (Pimapen)',
+    origin: 'تركي',
+    summary: 'لحام حراري محكم ومقاومة عالية للعوامل الجوية والأتربة',
+  },
+  {
+    id: 'kompen',
+    name: 'كومبين (Kompen)',
+    origin: 'تركي',
+    summary: 'قطاع عملي متوازن للغرف والواجهات السكنية والتجارية',
+  },
+  {
+    id: 'egepen',
+    name: 'إيجيبن (Egepen)',
+    origin: 'تركي · مجموعة ديكونينك',
+    summary: 'ثبات عالٍ مع تدعيم صلب مجلفن وزجاج دبل جلاس',
+  },
+  {
+    id: 'adopen',
+    name: 'أدوبن (Adopen)',
+    origin: 'تركي',
+    summary: 'خيار اقتصادي موثوق لعزل الضوضاء والأمطار',
+  },
+  {
+    id: 'deceuninck',
+    name: 'ديكونينك (Deceuninck)',
+    origin: 'بلجيكي / أوروبي',
+    summary: 'عزل حراري وصوتي فائق بتصميم أوروبي للفتحات الواسعة',
+  },
+  {
+    id: 'rehau',
+    name: 'ريهاو (Rehau)',
+    origin: 'ألماني',
+    summary: 'قطاع ألماني فاخر متعدد الغرف للفلل والمباني الراقية',
+  },
+  {
+    id: 'kommerling',
+    name: 'كوميرلينج (Kömmerling)',
+    origin: 'ألماني',
+    summary: 'أقصى إحكام ضد الضوضاء والحرارة مع دعم زجاج دبل وتريبل جلاس',
+  },
+];
+
+export const ALUMINUM_PROFILE_SYSTEMS: ProfileSystemOption[] = [
+  {
+    id: 'ps-small',
+    name: 'PS صغير',
+    origin: 'مصري / إيطالي',
+    summary: 'عملي للغرف الصغيرة والمطابخ والحمامات',
+  },
+  {
+    id: 'ps-large',
+    name: 'PS كبير',
+    origin: 'مصري / إيطالي',
+    summary: 'عزل جيد للصوت والأتربة للغرف والواجهات',
+  },
+  {
+    id: 'jumbo',
+    name: 'جامبو (Jumbo)',
+    origin: 'ثقيل',
+    summary: 'مخصص لأبواب البلكونات والفتحات الواسعة ودبل جلاس 24 مم',
+  },
+  {
+    id: 'tango',
+    name: 'تانجو (Tango)',
+    origin: 'معماري ثقيل',
+    summary: 'انسيابية حركة وعزل فائق للواجهات الرئيسية',
+  },
+  {
+    id: 'cladding-kitchen',
+    name: 'مطابخ كلادينج',
+    origin: 'ألواح مركبة',
+    summary: 'مقاومة كاملة للرطوبة والحرارة بألوان عصرية',
+  },
+  {
+    id: 'khashmonium-kitchen',
+    name: 'مطابخ خشمونيوم',
+    origin: 'ألومنيوم ديكور خشبي',
+    summary: 'مظهر خشبي دافئ بمتانة الألومنيوم المعالج',
+  },
+];
+
 export function getProfileTypeLabel(profileType?: ProfileCategory): string {
   return profileType === 'upvc' ? 'UPVC' : 'ألومنيوم';
 }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, ShieldCheck, X } from 'lucide-react';
+import { ShieldCheck, X } from 'lucide-react';
 
 interface AdminLoginModalProps {
   isOpen: boolean;
@@ -49,9 +49,11 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800">
           <div className="flex items-center gap-2.5">
-            <span className="w-8 h-8 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950 flex items-center justify-center shrink-0">
-              <Lock className="w-4 h-4" />
-            </span>
+            <img
+              src="/assets/aistudio/image_3de2cff6.png"
+              alt="شعار ماجدتال"
+              className="w-10 h-10 rounded-lg bg-white p-0.5 object-contain border border-slate-200 dark:border-slate-700 shrink-0"
+            />
             <div>
               <h2
                 id="admin-login-title"

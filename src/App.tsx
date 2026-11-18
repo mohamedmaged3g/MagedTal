@@ -74,6 +74,7 @@ export default function App() {
     clientPhone?: string;
     source?: OrderSource;
     profileType?: ProfileCategory;
+    profileSystem?: string;
     projectType?: string;
     dimensionsNote?: string;
     linkedInquiryId?: string;
@@ -238,6 +239,7 @@ export default function App() {
     clientPhone: string;
     source: OrderSource;
     profileType: ProfileCategory;
+    profileSystem?: string;
     projectType: string;
     dimensionsNote: string;
     stage: OrderStage;
@@ -356,6 +358,7 @@ export default function App() {
     customerName: string;
     customerPhone: string;
     profileType?: ProfileCategory;
+    profileSystem?: string;
     projectInterest: string;
     initialMessage: string;
     attachmentName?: string;
@@ -427,6 +430,7 @@ export default function App() {
       clientPhone: inquiry.customerPhone || '',
       source: 'facebook',
       profileType: inferredProfile,
+      profileSystem: inquiry.profileSystem,
       projectType: inquiry.projectInterest || 'استفسار فيسبوك',
       dimensionsNote: firstMsg,
       linkedInquiryId: inquiry.id,

@@ -37,6 +37,7 @@ export interface WorkshopOrder {
   clientPhone: string;
   source: OrderSource;
   profileType: ProfileCategory;
+  profileSystem?: string;
   projectType: string;
   dimensionsNote: string;
   stage: OrderStage;
@@ -65,6 +66,7 @@ export interface FacebookInquiry {
   customerName: string;
   customerPhone?: string;
   profileType?: ProfileCategory;
+  profileSystem?: string;
   projectInterest: string;
   status: InquiryStatus;
   sourceType: 'webhook' | 'graph_api' | 'manual';
@@ -77,6 +79,7 @@ export interface FacebookInquiry {
 export interface QuoteTrackingResult {
   referenceCode: string;
   profileTypeLabel?: string;
+  profileSystem?: string;
   projectInterest: string;
   status: InquiryStatus;
   statusLabel: string;
