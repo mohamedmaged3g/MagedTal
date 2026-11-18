@@ -40,6 +40,25 @@ export default function App() {
     linkedInquiryId?: string;
   } | null>(null);
 
+  const saveOrdersBackup = (list: WorkshopOrder[]) => {
+    try {
+      localStorage.setItem('alm_workshop_orders_v1', JSON.stringify(list));
+    } catch {
+      // Ignore storage quota errors
+    }
+  };
+
+  const loadOrdersBackup = (): WorkshopOrder[] => {
+    try {
+      const raw = localStorage.getItem('alm_workshop_orders_v1');
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? (parsed as WorkshopOrder[]) : [];
+    } catch {
+      return [];
+    }
+  };
+
   const loadInitialData = useCallback(async () => {
     setLoading(true);
     try {
@@ -51,7 +70,32 @@ export default function App() {
 
       if (ordersRes.ok) {
         const ordersData = (await ordersRes.json()) as { orders: WorkshopOrder[] };
-        setOrders(ordersData.orders || []);
+        const serverOrders = ordersData.orders || [];
+        if (serverOrders.length > 0) {
+          setOrders(serverOrders);
+          saveOrdersBackup(serverOrders);
+        } else {
+          const backup = loadOrdersBackup();
+          if (backup.length > 0) {
+            const restored: WorkshopOrder[] = [];
+            for (const item of [...backup].reverse()) {
+              const r = await fetch('/api/orders', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(item),
+              });
+              if (r.ok) {
+                const d = (await r.json()) as { order: WorkshopOrder };
+                restored.unshift(d.order);
+              }
+            }
+            const finalOrders = restored.length > 0 ? restored : backup;
+            setOrders(finalOrders);
+            saveOrdersBackup(finalOrders);
+          } else {
+            setOrders([]);
+          }
+        }
       }
 
       if (statusRes.ok) {
@@ -118,9 +162,11 @@ export default function App() {
       if (!res.ok || !data.order) {
         throw new Error(data.error || 'تعذر تحديث أمر الشغل');
       }
-      setOrders((prev) =>
-        prev.map((o) => (o.id === data.order!.id ? data.order! : o))
-      );
+      setOrders((prev) => {
+        const next = prev.map((o) => (o.id === data.order!.id ? data.order! : o));
+        saveOrdersBackup(next);
+        return next;
+      });
     } else {
       const res = await fetch('/api/orders', {
         method: 'POST',
@@ -131,7 +177,11 @@ export default function App() {
       if (!res.ok || !data.order) {
         throw new Error(data.error || 'تعذر إنشاء أمر الشغل');
       }
-      setOrders((prev) => [data.order!, ...prev]);
+      setOrders((prev) => {
+        const next = [data.order!, ...prev];
+        saveOrdersBackup(next);
+        return next;
+      });
       if (payload.linkedInquiryId) {
         setInquiries((prev) =>
           prev.map((inq) =>
@@ -156,14 +206,22 @@ export default function App() {
     });
     if (res.ok) {
       const data = (await res.json()) as { order: WorkshopOrder };
-      setOrders((prev) => prev.map((o) => (o.id === orderId ? data.order : o)));
+      setOrders((prev) => {
+        const next = prev.map((o) => (o.id === orderId ? data.order : o));
+        saveOrdersBackup(next);
+        return next;
+      });
     }
   };
 
   const handleDeleteOrder = async (orderId: string) => {
     const res = await fetch(`/api/orders/${orderId}`, { method: 'DELETE' });
     if (res.ok) {
-      setOrders((prev) => prev.filter((o) => o.id !== orderId));
+      setOrders((prev) => {
+        const next = prev.filter((o) => o.id !== orderId);
+        saveOrdersBackup(next);
+        return next;
+      });
     }
   };
 
