@@ -1,4 +1,10 @@
-import { OrderStage, ProfileCategory, WorkshopTool } from '../types.ts';
+import {
+  EstimatorOption,
+  EstimatorPricingConfig,
+  OrderStage,
+  ProfileCategory,
+  WorkshopTool,
+} from '../types.ts';
 
 export const FACEBOOK_PAGE_ID = '61596916040640';
 export const FACEBOOK_PAGE_URL = 'https://www.facebook.com/profile.php?id=61596916040640';
@@ -174,3 +180,67 @@ export const ORDER_STAGES: { id: OrderStage; label: string; toolId: WorkshopTool
   { id: 'fabrication', label: 'تصنيع بالورشة', toolId: 'kitchen-workshop' },
   { id: 'delivery', label: 'تسليم وتحصيل', toolId: 'shop-manager' },
 ];
+
+export const DEFAULT_ESTIMATOR_OPTIONS: EstimatorOption[] = [
+  {
+    id: 'cladding',
+    label: 'مطبخ كلادينج ألومنيوم',
+    formInterest: 'مطبخ كلادينج / ألوميتال',
+    unitLabel: 'أمتار طولية (علوي + سفلي)',
+    minRate: 4200,
+    maxRate: 5400,
+    defaultQty: 5,
+    minQty: 2,
+    maxQty: 20,
+  },
+  {
+    id: 'khashmonium',
+    label: 'مطبخ خشمونيوم / ديكور خشبي',
+    formInterest: 'مطبخ كلادينج / ألوميتال',
+    unitLabel: 'أمتار طولية (علوي + سفلي)',
+    minRate: 4600,
+    maxRate: 6000,
+    defaultQty: 5,
+    minQty: 2,
+    maxQty: 20,
+  },
+  {
+    id: 'ps_window',
+    label: 'شبابيك ألومنيوم PS (جرار / مفصلي)',
+    formInterest: 'شبابيك وأبواب ألومنيوم',
+    unitLabel: 'المساحة الإجمالية بالمتر المربع (م²)',
+    minRate: 3200,
+    maxRate: 4300,
+    defaultQty: 8,
+    minQty: 1,
+    maxQty: 40,
+  },
+  {
+    id: 'jumbo_double',
+    label: 'واجهات وأبواب جامبو / تانجو دبل جلاس',
+    formInterest: 'تجهيز واجهة أو شقة كاملة',
+    unitLabel: 'المساحة الإجمالية بالمتر المربع (م²)',
+    minRate: 4500,
+    maxRate: 6200,
+    defaultQty: 10,
+    minQty: 2,
+    maxQty: 50,
+  },
+  {
+    id: 'upvc',
+    label: 'شبابيك وأبواب UPVC (Wintech / Pimapen / Kompen / Rehau)',
+    formInterest: 'شبابيك وأبواب UPVC',
+    unitLabel: 'المساحة الإجمالية بالمتر المربع (م²)',
+    minRate: 4400,
+    maxRate: 6000,
+    defaultQty: 8,
+    minQty: 1,
+    maxQty: 45,
+  },
+];
+
+export const DEFAULT_ESTIMATOR_PRICING: EstimatorPricingConfig = {
+  items: DEFAULT_ESTIMATOR_OPTIONS,
+  premiumIncreasePercent: 15,
+};
+

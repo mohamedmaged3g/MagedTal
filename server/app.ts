@@ -3,7 +3,10 @@ import dotenv from 'dotenv';
 import express, { Express, NextFunction, Request, Response } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
+import { DEFAULT_ESTIMATOR_PRICING } from '../src/data/tools.ts';
 import type {
+  EstimatorOption,
+  EstimatorPricingConfig,
   FacebookInquiry,
   FacebookMessage,
   OrderSource,
@@ -61,7 +64,9 @@ const REDIS_REST_TOKEN = (
   process.env.KV_REST_API_TOKEN ||
   ''
 ).trim();
-const PERSISTENT_DB_CONFIGURED = Boolean(REDIS_REST_URL && REDIS_REST_TOKEN);
+const PERSISTENT_DB_CONFIGURED = Boolean(
+  /^https:\/\/.+/i.test(REDIS_REST_URL) && REDIS_REST_TOKEN
+);
 const REDIS_STORE_KEY = 'magedtal:workshop:store:v1';
 
 const DATA_DIR = process.env.VERCEL
@@ -74,6 +79,76 @@ interface StoreData {
   inquiries: FacebookInquiry[];
   nextOrderSeq: number;
   nextQuoteSeq: number;
+  pricingConfig?: EstimatorPricingConfig;
+}
+
+function cloneDefaultPricing(): EstimatorPricingConfig {
+  return {
+    items: DEFAULT_ESTIMATOR_PRICING.items.map((item) => ({ ...item })),
+    premiumIncreasePercent: DEFAULT_ESTIMATOR_PRICING.premiumIncreasePercent,
+  };
+}
+
+function normalizePricingConfig(raw?: unknown): EstimatorPricingConfig {
+  if (!raw || typeof raw !== 'object') {
+    return cloneDefaultPricing();
+  }
+  const obj = raw as Partial<EstimatorPricingConfig>;
+  const rawItems = Array.isArray(obj.items) ? obj.items : [];
+  const validItems: EstimatorOption[] = [];
+
+  for (let i = 0; i < rawItems.length; i++) {
+    const item = rawItems[i];
+    if (!item || typeof item !== 'object') continue;
+    const label = typeof item.label === 'string' ? item.label.trim() : '';
+    if (!label) continue;
+    const id =
+      typeof item.id === 'string' && item.id.trim()
+        ? item.id.trim()
+        : `type_${i + 1}`;
+    const unitLabel =
+      typeof item.unitLabel === 'string' && item.unitLabel.trim()
+        ? item.unitLabel.trim()
+        : 'المساحة الإجمالية بالمتر المربع (م²)';
+    const formInterest =
+      typeof item.formInterest === 'string' && item.formInterest.trim()
+        ? item.formInterest.trim()
+        : label;
+    const minRate = Math.max(0, Math.round(Number(item.minRate) || 0));
+    const maxRate = Math.max(minRate, Math.round(Number(item.maxRate) || minRate));
+    const minQty = Math.max(1, Math.round(Number(item.minQty) || 1));
+    const maxQty = Math.max(minQty, Math.round(Number(item.maxQty) || 40));
+    const defaultQty = Math.min(
+      maxQty,
+      Math.max(minQty, Math.round(Number(item.defaultQty) || minQty))
+    );
+
+    validItems.push({
+      id,
+      label,
+      formInterest,
+      unitLabel,
+      minRate,
+      maxRate,
+      defaultQty,
+      minQty,
+      maxQty,
+    });
+  }
+
+  const rawPercent = Number(obj.premiumIncreasePercent);
+  const premiumIncreasePercent = Number.isFinite(rawPercent)
+    ? Math.min(100, Math.max(0, Math.round(rawPercent)))
+    : DEFAULT_ESTIMATOR_PRICING.premiumIncreasePercent;
+
+  return {
+    items:
+      validItems.length > 0
+        ? validItems
+        : cloneDefaultPricing().items,
+    premiumIncreasePercent,
+    ...(typeof obj.updatedAt === 'string' ? { updatedAt: obj.updatedAt } : {}),
+  };
 }
 
 function normalizeProfileType(
@@ -116,6 +191,7 @@ function normalizeStore(raw: unknown): StoreData {
       typeof parsed.nextOrderSeq === 'number' ? parsed.nextOrderSeq : 101,
     nextQuoteSeq:
       typeof parsed.nextQuoteSeq === 'number' ? parsed.nextQuoteSeq : 1001,
+    pricingConfig: normalizePricingConfig(parsed.pricingConfig),
   };
 }
 
@@ -130,6 +206,7 @@ function readLocalStore(): StoreData {
         inquiries: [],
         nextOrderSeq: 101,
         nextQuoteSeq: 1001,
+        pricingConfig: cloneDefaultPricing(),
       };
       fs.writeFileSync(DATA_FILE, JSON.stringify(initial, null, 2), 'utf-8');
       return initial;
@@ -137,7 +214,13 @@ function readLocalStore(): StoreData {
     const raw = fs.readFileSync(DATA_FILE, 'utf-8');
     return normalizeStore(JSON.parse(raw));
   } catch {
-    return { orders: [], inquiries: [], nextOrderSeq: 101, nextQuoteSeq: 1001 };
+    return {
+      orders: [],
+      inquiries: [],
+      nextOrderSeq: 101,
+      nextQuoteSeq: 1001,
+      pricingConfig: cloneDefaultPricing(),
+    };
   }
 }
 
@@ -414,6 +497,61 @@ export function createApiApp(): Express {
   app.post('/api/auth/logout', (_req: Request, res: Response) => {
     res.clearCookie(SESSION_COOKIE_NAME, { path: '/' });
     res.json({ ok: true });
+  });
+
+  // --- Meter Pricing Configuration API ---
+  app.get('/api/pricing', async (_req: Request, res: Response) => {
+    const store = await loadStore();
+    res.json({ pricing: normalizePricingConfig(store.pricingConfig) });
+  });
+
+  app.put('/api/pricing', requireAdmin, async (req: Request, res: Response) => {
+    const body = req.body as Partial<EstimatorPricingConfig>;
+    if (!Array.isArray(body.items) || body.items.length === 0) {
+      res.status(400).json({ error: 'يجب إضافة نوع واحد على الأقل لتحديد سعر المتر.' });
+      return;
+    }
+
+    for (const item of body.items) {
+      const label = typeof item?.label === 'string' ? item.label.trim() : '';
+      if (!label) {
+        res.status(400).json({ error: 'يرجى كتابة اسم واضح لكل نوع قبل الحفظ.' });
+        return;
+      }
+      const minRate = Number(item.minRate);
+      const maxRate = Number(item.maxRate);
+      if (!Number.isFinite(minRate) || minRate < 0 || !Number.isFinite(maxRate) || maxRate < 0) {
+        res.status(400).json({ error: `سعر المتر غير صالح للنوع: ${label}` });
+        return;
+      }
+      if (maxRate < minRate) {
+        res.status(400).json({
+          error: `الحد الأقصى لسعر المتر يجب أن يكون أكبر من أو يساوي الحد الأدنى للنوع: ${label}`,
+        });
+        return;
+      }
+    }
+
+    const store = await loadStore();
+    const nextConfig = normalizePricingConfig({
+      items: body.items,
+      premiumIncreasePercent: body.premiumIncreasePercent,
+      updatedAt: new Date().toISOString(),
+    });
+    store.pricingConfig = nextConfig;
+    await saveStore(store);
+    res.json({ pricing: nextConfig });
+  });
+
+  app.post('/api/pricing/reset', requireAdmin, async (_req: Request, res: Response) => {
+    const store = await loadStore();
+    const resetConfig: EstimatorPricingConfig = {
+      ...cloneDefaultPricing(),
+      updatedAt: new Date().toISOString(),
+    };
+    store.pricingConfig = resetConfig;
+    await saveStore(store);
+    res.json({ pricing: resetConfig });
   });
 
   app.get('/privacy', (_req: Request, res: Response) => {

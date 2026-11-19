@@ -23,10 +23,12 @@ import {
 } from 'lucide-react';
 import {
   ALUMINUM_PROFILE_SYSTEMS,
+  DEFAULT_ESTIMATOR_PRICING,
   FACEBOOK_PAGE_URL,
   UPVC_PROFILE_SYSTEMS,
 } from '../data/tools.ts';
 import type {
+  EstimatorPricingConfig,
   FacebookInquiry,
   ProfileCategory,
   QuoteTrackingResult,
@@ -38,6 +40,7 @@ import type { ActiveTab } from './Sidebar.tsx';
 interface WebsiteViewProps {
   theme: 'light' | 'dark';
   isAuthenticated: boolean;
+  pricingConfig?: EstimatorPricingConfig;
   onToggleTheme: (next: 'light' | 'dark') => void;
   onEnterDashboard: (tab?: ActiveTab, toolId?: ToolId) => void;
   onSubmitQuoteRequest: (payload: {
@@ -89,75 +92,14 @@ const ResilientImage: React.FC<ResilientImageProps> = ({
   );
 };
 
-interface EstimatorOption {
-  id: string;
-  label: string;
-  formInterest: string;
-  unitLabel: string;
-  minRate: number;
-  maxRate: number;
-  defaultQty: number;
-  minQty: number;
-  maxQty: number;
+function formatMoneyRange(min: number, max: number): string {
+  const safeMin = Math.max(0, Math.round(min));
+  const safeMax = Math.max(safeMin, Math.round(max));
+  if (safeMin === safeMax) {
+    return safeMin.toLocaleString('en-US');
+  }
+  return `${safeMin.toLocaleString('en-US')} – ${safeMax.toLocaleString('en-US')}`;
 }
-
-const ESTIMATOR_OPTIONS: EstimatorOption[] = [
-  {
-    id: 'cladding',
-    label: 'مطبخ كلادينج ألومنيوم',
-    formInterest: 'مطبخ كلادينج / ألوميتال',
-    unitLabel: 'أمتار طولية (علوي + سفلي)',
-    minRate: 4200,
-    maxRate: 5400,
-    defaultQty: 5,
-    minQty: 2,
-    maxQty: 20,
-  },
-  {
-    id: 'khashmonium',
-    label: 'مطبخ خشمونيوم / ديكور خشبي',
-    formInterest: 'مطبخ كلادينج / ألوميتال',
-    unitLabel: 'أمتار طولية (علوي + سفلي)',
-    minRate: 4600,
-    maxRate: 6000,
-    defaultQty: 5,
-    minQty: 2,
-    maxQty: 20,
-  },
-  {
-    id: 'ps_window',
-    label: 'شبابيك ألومنيوم PS (جرار / مفصلي)',
-    formInterest: 'شبابيك وأبواب ألومنيوم',
-    unitLabel: 'المساحة الإجمالية بالمتر المربع (م²)',
-    minRate: 3200,
-    maxRate: 4300,
-    defaultQty: 8,
-    minQty: 1,
-    maxQty: 40,
-  },
-  {
-    id: 'jumbo_double',
-    label: 'واجهات وأبواب جامبو / تانجو دبل جلاس',
-    formInterest: 'تجهيز واجهة أو شقة كاملة',
-    unitLabel: 'المساحة الإجمالية بالمتر المربع (م²)',
-    minRate: 4500,
-    maxRate: 6200,
-    defaultQty: 10,
-    minQty: 2,
-    maxQty: 50,
-  },
-  {
-    id: 'upvc',
-    label: 'شبابيك وأبواب UPVC (Wintech / Pimapen / Kompen / Rehau)',
-    formInterest: 'شبابيك وأبواب UPVC',
-    unitLabel: 'المساحة الإجمالية بالمتر المربع (م²)',
-    minRate: 4400,
-    maxRate: 6000,
-    defaultQty: 8,
-    minQty: 1,
-    maxQty: 45,
-  },
-];
 
 const FINISH_SWATCHES = [
   {
@@ -399,6 +341,7 @@ const FAQ_ITEMS = [
 export const WebsiteView: React.FC<WebsiteViewProps> = ({
   theme,
   isAuthenticated,
+  pricingConfig = DEFAULT_ESTIMATOR_PRICING,
   onToggleTheme,
   onEnterDashboard,
   onSubmitQuoteRequest,
@@ -409,9 +352,14 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
   const [portfolioFilter, setPortfolioFilter] = useState<PortfolioFilter>('all');
   const [lightboxItem, setLightboxItem] = useState<PortfolioItem | null>(null);
 
+  const estimatorOptions =
+    pricingConfig.items && pricingConfig.items.length > 0
+      ? pricingConfig.items
+      : DEFAULT_ESTIMATOR_PRICING.items;
+
   // Estimator & Swatch state
-  const [estTypeId, setEstTypeId] = useState<string>('cladding');
-  const [estQty, setEstQty] = useState<number>(5);
+  const [estTypeId, setEstTypeId] = useState<string>(estimatorOptions[0]?.id || 'cladding');
+  const [estQty, setEstQty] = useState<number>(estimatorOptions[0]?.defaultQty || 5);
   const [estTier, setEstTier] = useState<'standard' | 'premium'>('standard');
   const [selectedSwatchId, setSelectedSwatchId] = useState<string>('matte-black');
 
@@ -440,13 +388,18 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
 
   const selectedEst =
-    ESTIMATOR_OPTIONS.find((opt) => opt.id === estTypeId) || ESTIMATOR_OPTIONS[0];
+    estimatorOptions.find((opt) => opt.id === estTypeId) || estimatorOptions[0];
   const selectedSwatch =
     FINISH_SWATCHES.find((s) => s.id === selectedSwatchId) || FINISH_SWATCHES[0];
-  const tierMultiplier = estTier === 'premium' ? 1.15 : 1;
+  const premiumPercent = Number.isFinite(pricingConfig.premiumIncreasePercent)
+    ? pricingConfig.premiumIncreasePercent
+    : 15;
+  const tierMultiplier = estTier === 'premium' ? 1 + premiumPercent / 100 : 1;
   const clampedQty = Math.max(selectedEst.minQty, Math.min(selectedEst.maxQty, estQty));
-  const estMinTotal = Math.round((clampedQty * selectedEst.minRate * tierMultiplier) / 100) * 100;
-  const estMaxTotal = Math.round((clampedQty * selectedEst.maxRate * tierMultiplier) / 100) * 100;
+  const activeUnitMinRate = Math.round(selectedEst.minRate * tierMultiplier);
+  const activeUnitMaxRate = Math.round(selectedEst.maxRate * tierMultiplier);
+  const estMinTotal = Math.round((clampedQty * activeUnitMinRate) / 100) * 100;
+  const estMaxTotal = Math.round((clampedQty * activeUnitMaxRate) / 100) * 100;
 
   const filteredPortfolio =
     portfolioFilter === 'all'
@@ -455,7 +408,7 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
 
   const handleEstimatorCategoryChange = (nextId: string) => {
     setEstTypeId(nextId);
-    const nextOpt = ESTIMATOR_OPTIONS.find((o) => o.id === nextId);
+    const nextOpt = estimatorOptions.find((o) => o.id === nextId);
     if (nextOpt) {
       setEstQty(nextOpt.defaultQty);
     }
@@ -465,9 +418,10 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
     setProjectInterest(selectedEst.formInterest);
     const tierLabel =
       estTier === 'premium'
-        ? 'مستوى ممتاز (سوفت كلوز / إكسسوار مستورد)'
+        ? `مستوى ممتاز (سوفت كلوز / إكسسوار مستورد +${premiumPercent}%)`
         : 'مستوى قياسي معتمد';
-    const summaryLine = `تقدير مبدئي: ${selectedEst.label} | الكمية: ${clampedQty} (${selectedEst.unitLabel}) | اللون المفضل: ${selectedSwatch.name} | ${tierLabel} | النطاق: ${estMinTotal.toLocaleString('en-US')} إلى ${estMaxTotal.toLocaleString('en-US')} ج.م`;
+    const totalLabel = formatMoneyRange(estMinTotal, estMaxTotal);
+    const summaryLine = `تقدير مبدئي: ${selectedEst.label} | الكمية: ${clampedQty} (${selectedEst.unitLabel}) | سعر المتر: ${formatMoneyRange(activeUnitMinRate, activeUnitMaxRate)} ج.م | اللون المفضل: ${selectedSwatch.name} | ${tierLabel} | التكلفة المتوقعة: ${totalLabel} ج.م`;
     setDimensionsText((prev) =>
       prev.trim() ? `${summaryLine}\n${prev}` : summaryLine
     );
@@ -698,9 +652,12 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
             <strong>مستوى الإكسسوارات:</strong>{' '}
             {estTier === 'premium' ? 'ممتاز سوفت كلوز' : 'قياسي معتمد'}
           </p>
+          <p>
+            <strong>سعر المتر المعتمد:</strong>{' '}
+            {formatMoneyRange(activeUnitMinRate, activeUnitMaxRate)} ج.م
+          </p>
           <p className="text-lg font-bold pt-3 border-t border-slate-200">
-            نطاق التكلفة المتوقع: {estMinTotal.toLocaleString('en-US')} –{' '}
-            {estMaxTotal.toLocaleString('en-US')} ج.م
+            التكلفة المتوقعة: {formatMoneyRange(estMinTotal, estMaxTotal)} ج.م
           </p>
         </div>
         <p className="mt-4 text-xs text-slate-600">
@@ -1136,16 +1093,28 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-8 lg:p-10">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
                 <div className="lg:col-span-7 space-y-6">
-                  <div>
-                    <p className="text-xs font-mono text-blue-700 dark:text-blue-400">
-                      تقدير فوري مبدئي
-                    </p>
-                    <h2 className="mt-1 text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">
-                      حاسبة التكلفة وكتالوج الألوان المعتمدة
-                    </h2>
-                    <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-                      اختر نوع العمل، حدد الأمتار واللون المفضل لمعرفة نطاق الميزانية المتوقع أو حفظ الملخص.
-                    </p>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-mono text-blue-700 dark:text-blue-400">
+                        تقدير فوري مبدئي
+                      </p>
+                      <h2 className="mt-1 text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">
+                        حاسبة التكلفة وكتالوج الألوان المعتمدة
+                      </h2>
+                      <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                        اختر نوع العمل، حدد الأمتار واللون المفضل لمعرفة نطاق الميزانية المتوقع أو حفظ الملخص.
+                      </p>
+                    </div>
+                    {isAuthenticated && (
+                      <button
+                        type="button"
+                        onClick={() => onEnterDashboard('pricing')}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-lg transition-colors whitespace-nowrap shrink-0"
+                      >
+                        <Calculator className="w-3.5 h-3.5" />
+                        <span>تعديل أسعار المتر</span>
+                      </button>
+                    )}
                   </div>
 
                   <div>
@@ -1153,20 +1122,29 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
                       1. اختر نوع المشروع
                     </label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      {ESTIMATOR_OPTIONS.map((opt) => {
+                      {estimatorOptions.map((opt) => {
                         const active = opt.id === selectedEst.id;
                         return (
                           <button
                             key={opt.id}
                             type="button"
                             onClick={() => handleEstimatorCategoryChange(opt.id)}
-                            className={`text-right px-3.5 py-3 rounded-lg border text-xs font-medium transition-colors ${
+                            className={`text-right px-3.5 py-3 rounded-lg border text-xs font-medium transition-colors flex flex-col gap-1 ${
                               active
                                 ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950 border-slate-900 dark:border-slate-100'
                                 : 'bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-slate-400 dark:hover:border-slate-600'
                             }`}
                           >
-                            {opt.label}
+                            <span>{opt.label}</span>
+                            <span
+                              className={`text-[11px] font-mono tabular-nums ${
+                                active
+                                  ? 'text-slate-300 dark:text-slate-600'
+                                  : 'text-blue-700 dark:text-blue-400'
+                              }`}
+                            >
+                              {formatMoneyRange(opt.minRate, opt.maxRate)} ج.م / م
+                            </span>
                           </button>
                         );
                       })}
@@ -1275,12 +1253,18 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
                       نطاق التكلفة التقديري المتوقع
                     </p>
                     <p className="mt-2 text-2xl sm:text-3xl font-bold font-mono tabular-nums text-slate-900 dark:text-slate-100">
-                      {estMinTotal.toLocaleString('en-US')} – {estMaxTotal.toLocaleString('en-US')}{' '}
+                      {formatMoneyRange(estMinTotal, estMaxTotal)}{' '}
                       <span className="text-sm font-sans font-semibold text-slate-600 dark:text-slate-400">
                         ج.م
                       </span>
                     </p>
                     <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
+                      سعر المتر:{' '}
+                      <strong className="font-mono tabular-nums text-slate-900 dark:text-slate-100">
+                        {formatMoneyRange(activeUnitMinRate, activeUnitMaxRate)} ج.م
+                      </strong>
+                    </p>
+                    <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
                       اللون المختار: <strong>{selectedSwatch.name}</strong>
                     </p>
                     <p className="mt-2 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">

@@ -4,14 +4,16 @@ import { FacebookInboxView } from './components/FacebookInboxView.tsx';
 import { OrderModal } from './components/OrderModal.tsx';
 import { OrdersView } from './components/OrdersView.tsx';
 import { OverviewView } from './components/OverviewView.tsx';
+import { PricingSettingsView } from './components/PricingSettingsView.tsx';
 import { OfflineIndicator } from './components/PWAInstallButton.tsx';
 import { Sidebar, type ActiveTab } from './components/Sidebar.tsx';
 import { TopBar } from './components/TopBar.tsx';
 import { WebsiteView } from './components/WebsiteView.tsx';
 import { WorkspaceView } from './components/WorkspaceView.tsx';
-import { ORDER_STAGES } from './data/tools.ts';
+import { DEFAULT_ESTIMATOR_PRICING, ORDER_STAGES } from './data/tools.ts';
 import type {
   AuthSessionStatus,
+  EstimatorPricingConfig,
   FacebookInquiry,
   FacebookStatusResponse,
   OrderSource,
@@ -62,6 +64,9 @@ export default function App() {
   const [orders, setOrders] = useState<WorkshopOrder[]>([]);
   const [inquiries, setInquiries] = useState<FacebookInquiry[]>([]);
   const [fbStatus, setFbStatus] = useState<FacebookStatusResponse | null>(null);
+  const [pricingConfig, setPricingConfig] = useState<EstimatorPricingConfig>(
+    DEFAULT_ESTIMATOR_PRICING
+  );
 
   const [loading, setLoading] = useState(false);
   const [syncingFb, setSyncingFb] = useState(false);
@@ -189,11 +194,24 @@ export default function App() {
 
     (async () => {
       try {
-        const res = await fetch('/api/auth/session', {
-          headers: getAuthHeaders(false),
-        });
-        if (!res.ok || cancelled) return;
-        const status = (await res.json()) as AuthSessionStatus;
+        const [sessionRes, pricingRes] = await Promise.all([
+          fetch('/api/auth/session', {
+            headers: getAuthHeaders(false),
+          }),
+          fetch('/api/pricing'),
+        ]);
+
+        if (pricingRes.ok && !cancelled) {
+          const pricingData = (await pricingRes.json()) as {
+            pricing?: EstimatorPricingConfig;
+          };
+          if (pricingData.pricing) {
+            setPricingConfig(pricingData.pricing);
+          }
+        }
+
+        if (!sessionRes.ok || cancelled) return;
+        const status = (await sessionRes.json()) as AuthSessionStatus;
         if (cancelled) return;
         setAuthStatus(status);
 
@@ -215,6 +233,37 @@ export default function App() {
       cancelled = true;
     };
   }, [getAuthHeaders, loadDashboardData]);
+
+  const handleSavePricing = async (nextConfig: EstimatorPricingConfig) => {
+    const res = await fetch('/api/pricing', {
+      method: 'PUT',
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(nextConfig),
+    });
+    const data = (await res.json()) as {
+      pricing?: EstimatorPricingConfig;
+      error?: string;
+    };
+    if (!res.ok || !data.pricing) {
+      throw new Error(data.error || 'تعذر حفظ أسعار المتر');
+    }
+    setPricingConfig(data.pricing);
+  };
+
+  const handleResetPricing = async () => {
+    const res = await fetch('/api/pricing/reset', {
+      method: 'POST',
+      headers: getAuthHeaders(false),
+    });
+    const data = (await res.json()) as {
+      pricing?: EstimatorPricingConfig;
+      error?: string;
+    };
+    if (!res.ok || !data.pricing) {
+      throw new Error(data.error || 'تعذر استعادة الأسعار الافتراضية');
+    }
+    setPricingConfig(data.pricing);
+  };
 
   const handleOpenTool = (toolId: ToolId) => {
     setActiveToolId(toolId);
@@ -536,6 +585,7 @@ export default function App() {
         <WebsiteView
           theme={theme}
           isAuthenticated={Boolean(authStatus?.authenticated)}
+          pricingConfig={pricingConfig}
           onToggleTheme={handleToggleTheme}
           onEnterDashboard={handleEnterDashboard}
           onSubmitQuoteRequest={handleCreateInquiry}
@@ -644,6 +694,14 @@ export default function App() {
                   onUpdateStage={handleUpdateOrderStage}
                   onDeleteOrder={handleDeleteOrder}
                   onOpenTool={handleOpenTool}
+                />
+              )}
+
+              {activeTab === 'pricing' && (
+                <PricingSettingsView
+                  pricingConfig={pricingConfig}
+                  onSavePricing={handleSavePricing}
+                  onResetPricing={handleResetPricing}
                 />
               )}
             </>

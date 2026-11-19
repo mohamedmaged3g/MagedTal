@@ -31,6 +31,9 @@ export const TopBar: React.FC<TopBarProps> = ({
   } else if (activeTab === 'orders') {
     sectionTitle = 'أوامر الشغل والمتابعة';
     detailTitle = 'جدول الإنتاج والمقاسات';
+  } else if (activeTab === 'pricing') {
+    sectionTitle = 'أسعار المتر والحاسبة';
+    detailTitle = 'تسعير أنواع الألومنيوم وUPVC والمطابخ';
   }
 
   return (

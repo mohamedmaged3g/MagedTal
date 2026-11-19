@@ -12,13 +12,14 @@ import {
   Ruler,
   Store,
   Sun,
+  Tag,
   X,
 } from 'lucide-react';
 import { FACEBOOK_PAGE_URL, WORKSHOP_TOOLS } from '../data/tools.ts';
 import type { ToolId } from '../types.ts';
 import { PWAInstallButton } from './PWAInstallButton.tsx';
 
-export type ActiveTab = 'overview' | 'workspace' | 'facebook' | 'orders';
+export type ActiveTab = 'overview' | 'workspace' | 'facebook' | 'orders' | 'pricing';
 
 interface SidebarProps {
   activeTab: ActiveTab;
@@ -91,6 +92,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'أوامر الشغل والمتابعة',
       icon: <ClipboardList className="w-4 h-4 shrink-0" />,
       count: activeOrdersCount,
+    },
+    {
+      id: 'pricing',
+      label: 'أسعار المتر والحاسبة',
+      icon: <Tag className="w-4 h-4 shrink-0" />,
     },
   ];
 

@@ -110,3 +110,22 @@ export interface ToolEmbedCheck {
   embeddable: boolean;
   reason?: string;
 }
+
+export interface EstimatorOption {
+  id: string;
+  label: string;
+  formInterest: string;
+  unitLabel: string;
+  minRate: number;
+  maxRate: number;
+  defaultQty: number;
+  minQty: number;
+  maxQty: number;
+}
+
+export interface EstimatorPricingConfig {
+  items: EstimatorOption[];
+  premiumIncreasePercent: number;
+  updatedAt?: string;
+}
+
