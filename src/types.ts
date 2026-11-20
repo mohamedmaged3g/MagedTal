@@ -101,7 +101,31 @@ export interface FacebookStatusResponse {
 export interface AuthSessionStatus {
   authenticated: boolean;
   usingDefaultPassword: boolean;
+  passwordSource?: 'dashboard' | 'env' | 'default';
+  passwordUpdatedAt?: string | null;
   persistentDbConfigured: boolean;
+}
+
+export interface CustomerProfile {
+  uid: string;
+  displayName: string;
+  email: string;
+  photoURL?: string;
+  phone?: string;
+  city?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface UserQuoteRecord {
+  id: string;
+  uid: string;
+  referenceCode: string;
+  projectInterest: string;
+  profileType: ProfileCategory;
+  profileSystem?: string;
+  summary: string;
+  createdAtMs: number;
 }
 
 export interface ToolEmbedCheck {
@@ -128,4 +152,5 @@ export interface EstimatorPricingConfig {
   premiumIncreasePercent: number;
   updatedAt?: string;
 }
+
 

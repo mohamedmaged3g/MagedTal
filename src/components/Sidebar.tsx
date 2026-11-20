@@ -4,6 +4,7 @@ import {
   Calculator,
   ClipboardList,
   ExternalLink,
+  KeyRound,
   LayoutDashboard,
   Layers,
   LogOut,
@@ -19,7 +20,13 @@ import { FACEBOOK_PAGE_URL, WORKSHOP_TOOLS } from '../data/tools.ts';
 import type { ToolId } from '../types.ts';
 import { PWAInstallButton } from './PWAInstallButton.tsx';
 
-export type ActiveTab = 'overview' | 'workspace' | 'facebook' | 'orders' | 'pricing';
+export type ActiveTab =
+  | 'overview'
+  | 'workspace'
+  | 'facebook'
+  | 'orders'
+  | 'pricing'
+  | 'security';
 
 interface SidebarProps {
   activeTab: ActiveTab;
@@ -97,6 +104,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'pricing',
       label: 'أسعار المتر والحاسبة',
       icon: <Tag className="w-4 h-4 shrink-0" />,
+    },
+    {
+      id: 'security',
+      label: 'الأمان وكلمة المرور',
+      icon: <KeyRound className="w-4 h-4 shrink-0" />,
     },
   ];
 

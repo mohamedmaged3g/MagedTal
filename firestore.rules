@@ -1,0 +1,136 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 1: Global Default-Deny Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Hardened Global Primitives ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'mohamedmaged3g@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isVerifiedUser() && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function parentUserExists(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId)) &&
+        get(/databases/$(database)/documents/users/$(userId)).data.uid == userId;
+    }
+
+    // --- Validation Blueprints (Synced verbatim with firebase-blueprint.json) ---
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'displayName', 'email', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'displayName', 'email', 'photoURL', 'phone', 'city', 'createdAt', 'updatedAt']) &&
+        data.uid is string && data.uid == userId && isValidId(data.uid) &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120 &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 200 &&
+        (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 600)) &&
+        (!('phone' in data) || (data.phone is string && data.phone.size() <= 32)) &&
+        (!('city' in data) || (data.city is string && data.city.size() <= 100)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidUserQuote(data, userId) {
+      return data.keys().hasAll(['uid', 'referenceCode', 'projectInterest', 'profileType', 'summary', 'createdAt']) &&
+        data.keys().hasOnly(['uid', 'referenceCode', 'projectInterest', 'profileType', 'profileSystem', 'summary', 'createdAt']) &&
+        data.uid is string && data.uid == userId && isValidId(data.uid) &&
+        data.referenceCode is string && data.referenceCode.size() >= 3 && data.referenceCode.size() <= 32 && data.referenceCode.matches('^[A-Z0-9_\\-]+$') &&
+        data.projectInterest is string && data.projectInterest.size() >= 1 && data.projectInterest.size() <= 160 &&
+        data.profileType is string && (data.profileType == 'aluminum' || data.profileType == 'upvc') &&
+        (!('profileSystem' in data) || (data.profileSystem is string && data.profileSystem.size() <= 120)) &&
+        data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 1000 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidAdminMember(data, adminId) {
+      return data.keys().hasAll(['uid', 'email', 'createdAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'createdAt']) &&
+        data.uid is string && data.uid == adminId && isValidId(data.uid) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 200 &&
+        data.createdAt is timestamp;
+    }
+
+    // --- Collection: /admins/{adminId} ---
+    match /admins/{adminId} {
+      allow get: if isVerifiedUser() && isValidId(adminId) && (request.auth.uid == adminId || isAdmin());
+      allow list: if isBootstrappedAdmin();
+      allow create: if isVerifiedUser() && isValidId(adminId) && isValidAdminMember(incoming(), adminId) && incoming().createdAt == request.time && isAdmin();
+      allow update: if false;
+      allow delete: if isVerifiedUser() && isValidId(adminId) && isAdmin();
+    }
+
+    // --- Collection: /users/{userId} (Strict PII Isolation) ---
+    match /users/{userId} {
+      allow get: if isVerifiedUser() && isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isVerifiedUser() && (resource.data.uid == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isValidUserProfile(incoming(), userId) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isOwner(userId) &&
+        incoming().email == request.auth.token.email;
+      allow update: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isValidUserProfile(incoming(), userId) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (
+            isOwner(userId) &&
+            incoming().email == existing().email &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'phone', 'city', 'updatedAt'])
+          )
+        );
+      allow delete: if isVerifiedUser() && isValidId(userId) && (isOwner(userId) || isAdmin());
+
+      // --- Subcollection: /users/{userId}/quotes/{quoteId} ---
+      match /quotes/{quoteId} {
+        allow get: if isVerifiedUser() && isValidId(userId) && isValidId(quoteId) && (isOwner(userId) || isAdmin()) && parentUserExists(userId);
+        allow list: if isVerifiedUser() && ((request.auth.uid == userId && resource.data.uid == request.auth.uid) || isBootstrappedAdmin());
+        allow create: if isVerifiedUser() &&
+          isValidId(userId) &&
+          isValidId(quoteId) &&
+          isValidUserQuote(incoming(), userId) &&
+          incoming().createdAt == request.time &&
+          isOwner(userId) &&
+          parentUserExists(userId);
+        allow update: if false;
+        allow delete: if isVerifiedUser() && isValidId(userId) && isValidId(quoteId) && (isOwner(userId) || isAdmin()) && parentUserExists(userId);
+      }
+    }
+  }
+}

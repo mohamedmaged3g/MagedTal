@@ -74,12 +74,20 @@ const DATA_DIR = process.env.VERCEL
   : path.join(process.cwd(), 'data');
 const DATA_FILE = path.join(DATA_DIR, 'workshop.json');
 
+interface AdminAuthConfig {
+  passwordHash?: string;
+  salt?: string;
+  tokenVersion: number;
+  updatedAt?: string;
+}
+
 interface StoreData {
   orders: WorkshopOrder[];
   inquiries: FacebookInquiry[];
   nextOrderSeq: number;
   nextQuoteSeq: number;
   pricingConfig?: EstimatorPricingConfig;
+  adminAuth?: AdminAuthConfig;
 }
 
 function cloneDefaultPricing(): EstimatorPricingConfig {
@@ -192,6 +200,33 @@ function normalizeStore(raw: unknown): StoreData {
     nextQuoteSeq:
       typeof parsed.nextQuoteSeq === 'number' ? parsed.nextQuoteSeq : 1001,
     pricingConfig: normalizePricingConfig(parsed.pricingConfig),
+    adminAuth: normalizeAdminAuth(parsed.adminAuth),
+  };
+}
+
+function normalizeAdminAuth(raw?: unknown): AdminAuthConfig {
+  if (!raw || typeof raw !== 'object') {
+    return { tokenVersion: 1 };
+  }
+  const obj = raw as Partial<AdminAuthConfig>;
+  const tokenVersion =
+    typeof obj.tokenVersion === 'number' && Number.isFinite(obj.tokenVersion) && obj.tokenVersion >= 1
+      ? Math.floor(obj.tokenVersion)
+      : 1;
+  const hasHash =
+    typeof obj.passwordHash === 'string' &&
+    obj.passwordHash.length > 0 &&
+    typeof obj.salt === 'string' &&
+    obj.salt.length > 0;
+  return {
+    tokenVersion,
+    ...(hasHash
+      ? {
+          passwordHash: obj.passwordHash,
+          salt: obj.salt,
+          updatedAt: typeof obj.updatedAt === 'string' ? obj.updatedAt : undefined,
+        }
+      : {}),
   };
 }
 
@@ -291,10 +326,31 @@ function timingSafeMatch(a: string, b: string): boolean {
   return crypto.timingSafeEqual(hashA, hashB);
 }
 
-function signSessionToken(): string {
+function hashAdminPassword(password: string, salt: string): string {
+  return crypto.scryptSync(password, salt, 64).toString('hex');
+}
+
+function getAdminPasswordSource(store: StoreData): 'dashboard' | 'env' | 'default' {
+  if (store.adminAuth?.passwordHash && store.adminAuth?.salt) {
+    return 'dashboard';
+  }
+  return USING_DEFAULT_PASSWORD ? 'default' : 'env';
+}
+
+function verifyAdminPassword(candidate: string, store: StoreData): boolean {
+  if (store.adminAuth?.passwordHash && store.adminAuth?.salt) {
+    const derived = hashAdminPassword(candidate, store.adminAuth.salt);
+    return timingSafeMatch(derived, store.adminAuth.passwordHash);
+  }
+  return timingSafeMatch(candidate, ADMIN_PASSWORD);
+}
+
+function signSessionToken(tokenVersion = 1): string {
   const exp = Date.now() + SESSION_TTL_MS;
   const nonce = crypto.randomBytes(8).toString('hex');
-  const payload = Buffer.from(JSON.stringify({ exp, nonce })).toString('base64url');
+  const payload = Buffer.from(
+    JSON.stringify({ exp, nonce, v: tokenVersion })
+  ).toString('base64url');
   const sig = crypto
     .createHmac('sha256', SESSION_SECRET)
     .update(payload)
@@ -302,7 +358,10 @@ function signSessionToken(): string {
   return `${payload}.${sig}`;
 }
 
-function verifySessionToken(token: string | undefined): boolean {
+function verifySessionToken(
+  token: string | undefined,
+  expectedVersion = 1
+): boolean {
   if (!token || !token.includes('.')) return false;
   const [payload, sig] = token.split('.', 2);
   if (!payload || !sig) return false;
@@ -314,8 +373,13 @@ function verifySessionToken(token: string | undefined): boolean {
   try {
     const parsed = JSON.parse(
       Buffer.from(payload, 'base64url').toString('utf-8')
-    ) as { exp?: number };
-    return typeof parsed.exp === 'number' && parsed.exp > Date.now();
+    ) as { exp?: number; v?: number };
+    const tokenVer = typeof parsed.v === 'number' ? parsed.v : 1;
+    return (
+      typeof parsed.exp === 'number' &&
+      parsed.exp > Date.now() &&
+      tokenVer === expectedVersion
+    );
   } catch {
     return false;
   }
@@ -350,12 +414,18 @@ function extractSessionToken(req: Request): string | undefined {
   return cookies[SESSION_COOKIE_NAME];
 }
 
-function isAdminAuthenticated(req: Request): boolean {
-  return verifySessionToken(extractSessionToken(req));
+function isAdminAuthenticated(req: Request, store?: StoreData): boolean {
+  const expectedVersion = store?.adminAuth?.tokenVersion ?? 1;
+  return verifySessionToken(extractSessionToken(req), expectedVersion);
 }
 
-function requireAdmin(req: Request, res: Response, next: NextFunction): void {
-  if (!isAdminAuthenticated(req)) {
+async function requireAdmin(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const store = await loadStore();
+  if (!isAdminAuthenticated(req, store)) {
     res.status(401).json({ error: 'يلزم تسجيل الدخول لإدارة الورشة' });
     return;
   }
@@ -440,15 +510,19 @@ export function createApiApp(): Express {
   });
 
   // --- Admin Auth Routes ---
-  app.get('/api/auth/session', (req: Request, res: Response) => {
+  app.get('/api/auth/session', async (req: Request, res: Response) => {
+    const store = await loadStore();
+    const passwordSource = getAdminPasswordSource(store);
     res.json({
-      authenticated: isAdminAuthenticated(req),
-      usingDefaultPassword: USING_DEFAULT_PASSWORD,
+      authenticated: isAdminAuthenticated(req, store),
+      usingDefaultPassword: passwordSource === 'default',
+      passwordSource,
+      passwordUpdatedAt: store.adminAuth?.updatedAt ?? null,
       persistentDbConfigured: PERSISTENT_DB_CONFIGURED,
     });
   });
 
-  app.post('/api/auth/login', (req: Request, res: Response) => {
+  app.post('/api/auth/login', async (req: Request, res: Response) => {
     if (!checkRateLimit(req, 'login', 10, 15 * 60 * 1000)) {
       res.status(429).json({
         error: 'تم تجاوز عدد محاولات تسجيل الدخول، يرجى الانتظار 15 دقيقة.',
@@ -464,17 +538,26 @@ export function createApiApp(): Express {
       return;
     }
 
-    if (!timingSafeMatch(normalizedInput, ADMIN_PASSWORD)) {
+    const store = await loadStore();
+    const passwordSource = getAdminPasswordSource(store);
+
+    if (!verifyAdminPassword(normalizedInput, store)) {
+      const detail =
+        passwordSource === 'dashboard'
+          ? 'كلمة المرور غير صحيحة (يتم التحقق حالياً باستخدام كلمة المرور التي تم تعيينها من لوحة المدير)'
+          : passwordSource === 'env'
+          ? 'كلمة المرور غير صحيحة (يتم التحقق حالياً باستخدام كلمة المرور المخصصة في متغير ADMIN_PASSWORD)'
+          : 'كلمة المرور غير صحيحة';
       res.status(401).json({
-        error: USING_DEFAULT_PASSWORD
-          ? 'كلمة المرور غير صحيحة'
-          : 'كلمة المرور غير صحيحة (يتم التحقق حالياً باستخدام كلمة المرور المخصصة في متغير ADMIN_PASSWORD)',
-        usingDefaultPassword: USING_DEFAULT_PASSWORD,
+        error: detail,
+        usingDefaultPassword: passwordSource === 'default',
+        passwordSource,
       });
       return;
     }
 
-    const token = signSessionToken();
+    const tokenVersion = store.adminAuth?.tokenVersion ?? 1;
+    const token = signSessionToken(tokenVersion);
     const isSecure =
       req.secure || req.headers['x-forwarded-proto'] === 'https';
 
@@ -489,7 +572,142 @@ export function createApiApp(): Express {
     res.json({
       ok: true,
       token,
-      usingDefaultPassword: USING_DEFAULT_PASSWORD,
+      usingDefaultPassword: passwordSource === 'default',
+      passwordSource,
+      passwordUpdatedAt: store.adminAuth?.updatedAt ?? null,
+      persistentDbConfigured: PERSISTENT_DB_CONFIGURED,
+    });
+  });
+
+  app.put('/api/auth/password', requireAdmin, async (req: Request, res: Response) => {
+    const body = req.body as {
+      currentPassword?: string;
+      newPassword?: string;
+      confirmPassword?: string;
+    };
+
+    const currentPassword =
+      typeof body.currentPassword === 'string'
+        ? stripBidiAndTrim(body.currentPassword)
+        : '';
+    const newPassword =
+      typeof body.newPassword === 'string'
+        ? stripBidiAndTrim(body.newPassword)
+        : '';
+    const confirmPassword =
+      typeof body.confirmPassword === 'string'
+        ? stripBidiAndTrim(body.confirmPassword)
+        : '';
+
+    if (!currentPassword) {
+      res.status(400).json({ error: 'يرجى إدخال كلمة المرور الحالية أولاً.' });
+      return;
+    }
+    if (newPassword.length < 6) {
+      res.status(400).json({
+        error: 'كلمة المرور الجديدة يجب أن تتكون من 6 أحرف أو أرقام على الأقل.',
+      });
+      return;
+    }
+    if (newPassword.length > 128) {
+      res.status(400).json({ error: 'كلمة المرور الجديدة طويلة جداً.' });
+      return;
+    }
+    if (confirmPassword && newPassword !== confirmPassword) {
+      res.status(400).json({ error: 'تأكيد كلمة المرور الجديدة غير متطابق.' });
+      return;
+    }
+
+    const store = await loadStore();
+    if (!verifyAdminPassword(currentPassword, store)) {
+      res.status(401).json({ error: 'كلمة المرور الحالية غير صحيحة.' });
+      return;
+    }
+    if (currentPassword === newPassword) {
+      res.status(400).json({
+        error: 'يرجى اختيار كلمة مرور جديدة مختلفة عن كلمة المرور الحالية.',
+      });
+      return;
+    }
+
+    const salt = crypto.randomBytes(16).toString('hex');
+    const passwordHash = hashAdminPassword(newPassword, salt);
+    const nextVersion = (store.adminAuth?.tokenVersion ?? 1) + 1;
+    const updatedAt = new Date().toISOString();
+
+    store.adminAuth = {
+      passwordHash,
+      salt,
+      tokenVersion: nextVersion,
+      updatedAt,
+    };
+    await saveStore(store);
+
+    const token = signSessionToken(nextVersion);
+    const isSecure =
+      req.secure || req.headers['x-forwarded-proto'] === 'https';
+
+    res.cookie(SESSION_COOKIE_NAME, token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: isSecure,
+      maxAge: SESSION_TTL_MS,
+      path: '/',
+    });
+
+    res.json({
+      ok: true,
+      token,
+      usingDefaultPassword: false,
+      passwordSource: 'dashboard',
+      passwordUpdatedAt: updatedAt,
+      persistentDbConfigured: PERSISTENT_DB_CONFIGURED,
+    });
+  });
+
+  app.post('/api/auth/password/reset', requireAdmin, async (req: Request, res: Response) => {
+    const body = req.body as { currentPassword?: string };
+    const currentPassword =
+      typeof body.currentPassword === 'string'
+        ? stripBidiAndTrim(body.currentPassword)
+        : '';
+
+    if (!currentPassword) {
+      res.status(400).json({ error: 'يرجى إدخال كلمة المرور الحالية للتأكيد.' });
+      return;
+    }
+
+    const store = await loadStore();
+    if (!verifyAdminPassword(currentPassword, store)) {
+      res.status(401).json({ error: 'كلمة المرور الحالية غير صحيحة.' });
+      return;
+    }
+
+    const nextVersion = (store.adminAuth?.tokenVersion ?? 1) + 1;
+    store.adminAuth = {
+      tokenVersion: nextVersion,
+    };
+    await saveStore(store);
+
+    const passwordSource = getAdminPasswordSource(store);
+    const token = signSessionToken(nextVersion);
+    const isSecure =
+      req.secure || req.headers['x-forwarded-proto'] === 'https';
+
+    res.cookie(SESSION_COOKIE_NAME, token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: isSecure,
+      maxAge: SESSION_TTL_MS,
+      path: '/',
+    });
+
+    res.json({
+      ok: true,
+      token,
+      usingDefaultPassword: passwordSource === 'default',
+      passwordSource,
+      passwordUpdatedAt: null,
       persistentDbConfigured: PERSISTENT_DB_CONFIGURED,
     });
   });
@@ -1052,7 +1270,8 @@ export function createApiApp(): Express {
 
   // Public Quote / Customer Inquiry Submission (also used by Admin Manual Add)
   app.post('/api/facebook/inquiries', async (req: Request, res: Response) => {
-    if (!isAdminAuthenticated(req) && !checkRateLimit(req, 'quote', 12, 15 * 60 * 1000)) {
+    const store = await loadStore();
+    if (!isAdminAuthenticated(req, store) && !checkRateLimit(req, 'quote', 12, 15 * 60 * 1000)) {
       res.status(429).json({
         error: 'تم إرسال عدة طلبات مؤخراً، يرجى الانتظار قليلاً قبل إعادة المحاولة.',
       });
@@ -1085,7 +1304,6 @@ export function createApiApp(): Express {
       return;
     }
 
-    const store = await loadStore();
     const now = new Date().toISOString();
     const quoteSeq = store.nextQuoteSeq || 1001;
     store.nextQuoteSeq = quoteSeq + 1;

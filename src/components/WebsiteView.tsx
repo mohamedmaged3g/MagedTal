@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Calculator,
@@ -18,6 +18,7 @@ import {
   Search,
   ShieldCheck,
   Sun,
+  User,
   X,
   ZoomIn,
 } from 'lucide-react';
@@ -28,6 +29,7 @@ import {
   UPVC_PROFILE_SYSTEMS,
 } from '../data/tools.ts';
 import type {
+  CustomerProfile,
   EstimatorPricingConfig,
   FacebookInquiry,
   ProfileCategory,
@@ -41,6 +43,14 @@ interface WebsiteViewProps {
   theme: 'light' | 'dark';
   isAuthenticated: boolean;
   pricingConfig?: EstimatorPricingConfig;
+  googleProfile?: CustomerProfile | null;
+  googleAuthLoading?: boolean;
+  googleAuthError?: string | null;
+  userQuotesCount?: number;
+  trackPrefillCode?: string | null;
+  onConsumeTrackPrefill?: () => void;
+  onGoogleSignIn?: () => Promise<void>;
+  onOpenCustomerAccount?: () => void;
   onToggleTheme: (next: 'light' | 'dark') => void;
   onEnterDashboard: (tab?: ActiveTab, toolId?: ToolId) => void;
   onSubmitQuoteRequest: (payload: {
@@ -54,6 +64,27 @@ interface WebsiteViewProps {
     attachmentDataUrl?: string;
   }) => Promise<FacebookInquiry | unknown>;
 }
+
+const GoogleMark: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+  <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+    <path
+      fill="#4285F4"
+      d="M23.49 12.27c0-.79-.07-1.54-.2-2.27H12v4.3h6.45a5.52 5.52 0 0 1-2.39 3.62v3h3.87c2.26-2.08 3.56-5.15 3.56-8.65z"
+    />
+    <path
+      fill="#34A853"
+      d="M12 24c3.24 0 5.95-1.07 7.93-2.91l-3.87-3c-1.07.72-2.45 1.15-4.06 1.15-3.12 0-5.77-2.11-6.72-4.95H1.29v3.1A12 12 0 0 0 12 24z"
+    />
+    <path
+      fill="#FBBC05"
+      d="M5.28 14.29A7.2 7.2 0 0 1 4.9 12c0-.8.14-1.57.38-2.29V6.61H1.29A12 12 0 0 0 0 12c0 1.94.46 3.77 1.29 5.39l3.99-3.1z"
+    />
+    <path
+      fill="#EA4335"
+      d="M12 4.76c1.76 0 3.34.61 4.58 1.8l3.44-3.44C17.95 1.19 15.24 0 12 0 7.31 0 3.25 2.69 1.29 6.61l3.99 3.1c.95-2.84 3.6-4.95 6.72-4.95z"
+    />
+  </svg>
+);
 
 interface ResilientImageProps {
   src: string;
@@ -342,6 +373,14 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
   theme,
   isAuthenticated,
   pricingConfig = DEFAULT_ESTIMATOR_PRICING,
+  googleProfile = null,
+  googleAuthLoading = false,
+  googleAuthError = null,
+  userQuotesCount = 0,
+  trackPrefillCode = null,
+  onConsumeTrackPrefill,
+  onGoogleSignIn,
+  onOpenCustomerAccount,
   onToggleTheme,
   onEnterDashboard,
   onSubmitQuoteRequest,
@@ -386,6 +425,55 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
 
   // FAQ state
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
+
+  // Auto-fill quote form name & phone when signed in with Google
+  useEffect(() => {
+    if (!googleProfile) return;
+    if (googleProfile.displayName) {
+      setCustomerName((prev) => (prev.trim() ? prev : googleProfile.displayName));
+    }
+    if (googleProfile.phone) {
+      setCustomerPhone((prev) => (prev.trim() ? prev : googleProfile.phone || ''));
+    }
+  }, [googleProfile]);
+
+  const performTrackLookup = async (rawCode: string) => {
+    setTrackingError(null);
+    setTrackingResult(null);
+    const code = rawCode.trim().toUpperCase();
+    if (code.length < 4) {
+      setTrackingError('أدخل رقم المتابعة مثل MT-1001');
+      return;
+    }
+
+    setTrackingLoading(true);
+    try {
+      const res = await fetch(
+        `/api/quotes/track?code=${encodeURIComponent(code)}`
+      );
+      const data = (await res.json()) as {
+        tracking?: QuoteTrackingResult;
+        error?: string;
+      };
+      if (!res.ok || !data.tracking) {
+        setTrackingError(data.error || 'لم يتم العثور على الطلب');
+      } else {
+        setTrackingResult(data.tracking);
+      }
+    } catch {
+      setTrackingError('تعذر الاتصال بالخادم حالياً.');
+    } finally {
+      setTrackingLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!trackPrefillCode) return;
+    setTrackInput(trackPrefillCode);
+    document.getElementById('track-order')?.scrollIntoView({ behavior: 'smooth' });
+    void performTrackLookup(trackPrefillCode);
+    onConsumeTrackPrefill?.();
+  }, [trackPrefillCode, onConsumeTrackPrefill]);
 
   const selectedEst =
     estimatorOptions.find((opt) => opt.id === estTypeId) || estimatorOptions[0];
@@ -578,33 +666,7 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
 
   const handleTrackLookup = async (e: React.FormEvent) => {
     e.preventDefault();
-    setTrackingError(null);
-    setTrackingResult(null);
-    const code = trackInput.trim().toUpperCase();
-    if (code.length < 4) {
-      setTrackingError('أدخل رقم المتابعة مثل MT-1001');
-      return;
-    }
-
-    setTrackingLoading(true);
-    try {
-      const res = await fetch(
-        `/api/quotes/track?code=${encodeURIComponent(code)}`
-      );
-      const data = (await res.json()) as {
-        tracking?: QuoteTrackingResult;
-        error?: string;
-      };
-      if (!res.ok || !data.tracking) {
-        setTrackingError(data.error || 'لم يتم العثور على الطلب');
-      } else {
-        setTrackingResult(data.tracking);
-      }
-    } catch {
-      setTrackingError('تعذر الاتصال بالخادم حالياً.');
-    } finally {
-      setTrackingLoading(false);
-    }
+    await performTrackLookup(trackInput);
   };
 
   const navLinks = [
@@ -726,10 +788,51 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
               )}
             </button>
 
+            {googleProfile ? (
+              <button
+                type="button"
+                onClick={onOpenCustomerAccount}
+                className="inline-flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors whitespace-nowrap shrink-0"
+              >
+                {googleProfile.photoURL ? (
+                  <img
+                    src={googleProfile.photoURL}
+                    alt={googleProfile.displayName}
+                    referrerPolicy="no-referrer"
+                    className="w-5 h-5 rounded-full object-cover shrink-0"
+                  />
+                ) : (
+                  <User className="w-3.5 h-3.5 shrink-0" />
+                )}
+                <span className="max-w-[96px] truncate hidden sm:inline">
+                  {googleProfile.displayName}
+                </span>
+                {userQuotesCount > 0 && (
+                  <span className="font-mono text-[11px] text-blue-700 dark:text-blue-400">
+                    ({userQuotesCount})
+                  </span>
+                )}
+              </button>
+            ) : (
+              onGoogleSignIn && (
+                <button
+                  type="button"
+                  disabled={googleAuthLoading}
+                  onClick={() => void onGoogleSignIn()}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap shrink-0"
+                >
+                  <GoogleMark className="w-3.5 h-3.5 shrink-0" />
+                  <span className="hidden sm:inline">
+                    {googleAuthLoading ? 'جاري الدخول...' : 'دخول بجوجل'}
+                  </span>
+                </button>
+              )
+            )}
+
             <button
               type="button"
               onClick={() => onEnterDashboard('overview')}
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors whitespace-nowrap shrink-0"
+              className="hidden lg:inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors whitespace-nowrap shrink-0"
             >
               <Lock className="w-3.5 h-3.5" />
               <span>{isAuthenticated ? 'لوحة الإدارة' : 'بوابة الإدارة'}</span>
@@ -737,7 +840,7 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
 
             <a
               href="#quote-form"
-              className="px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-500 rounded-lg transition-colors whitespace-nowrap shrink-0"
+              className="px-3.5 sm:px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-500 rounded-lg transition-colors whitespace-nowrap shrink-0"
             >
               اطلب مقايسة
             </a>
@@ -758,6 +861,34 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
               </a>
             ))}
             <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+              {googleProfile ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileNavOpen(false);
+                    onOpenCustomerAccount?.();
+                  }}
+                  className="inline-flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 rounded-lg"
+                >
+                  <User className="w-3.5 h-3.5" />
+                  <span>حسابي ({googleProfile.displayName})</span>
+                </button>
+              ) : (
+                onGoogleSignIn && (
+                  <button
+                    type="button"
+                    disabled={googleAuthLoading}
+                    onClick={() => {
+                      setMobileNavOpen(false);
+                      void onGoogleSignIn();
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg"
+                  >
+                    <GoogleMark className="w-3.5 h-3.5" />
+                    <span>التسجيل والدخول بحساب جوجل</span>
+                  </button>
+                )
+              )}
               <button
                 type="button"
                 onClick={() => {
@@ -1536,6 +1667,71 @@ export const WebsiteView: React.FC<WebsiteViewProps> = ({
               </div>
 
               <div className="lg:col-span-7 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 sm:p-8">
+                {/* Google Account Sign-In / Connected Banner */}
+                {googleProfile ? (
+                  <div className="mb-5 p-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {googleProfile.photoURL ? (
+                        <img
+                          src={googleProfile.photoURL}
+                          alt={googleProfile.displayName}
+                          referrerPolicy="no-referrer"
+                          className="w-8 h-8 rounded-full object-cover border border-slate-200 dark:border-slate-700 shrink-0"
+                        />
+                      ) : (
+                        <span className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 flex items-center justify-center shrink-0">
+                          <User className="w-4 h-4" />
+                        </span>
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                          مسجّل الدخول باسم: {googleProfile.displayName}
+                        </p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                          سيتم حفظ طلبك تلقائياً في سجل حسابك لمتابعته في أي وقت.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={onOpenCustomerAccount}
+                      className="text-xs font-semibold text-blue-700 dark:text-blue-400 hover:underline whitespace-nowrap shrink-0"
+                    >
+                      عرض حسابي وطلباتي ({userQuotesCount})
+                    </button>
+                  </div>
+                ) : (
+                  onGoogleSignIn && (
+                    <div className="mb-5 p-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg flex flex-wrap items-center justify-between gap-3">
+                      <div className="space-y-0.5">
+                        <p className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                          سجّل على الموقع بحساب جوجل في ثانية واحدة
+                        </p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                          لتعبئة بياناتك تلقائياً وحفظ جميع طلبات المقايسة وأرقام المتابعة في حسابك.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={googleAuthLoading}
+                        onClick={() => void onGoogleSignIn()}
+                        className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap shrink-0"
+                      >
+                        <GoogleMark className="w-4 h-4 shrink-0" />
+                        <span>
+                          {googleAuthLoading ? 'جاري التسجيل...' : 'الدخول بحساب جوجل'}
+                        </span>
+                      </button>
+                    </div>
+                  )
+                )}
+
+                {googleAuthError && (
+                  <div className="mb-4 p-3 text-xs font-medium text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 rounded-lg">
+                    {googleAuthError}
+                  </div>
+                )}
+
                 {submittedRefCode && (
                   <div className="mb-5 p-4 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-900 rounded-lg space-y-2.5">
                     <div className="flex flex-wrap items-center justify-between gap-3">

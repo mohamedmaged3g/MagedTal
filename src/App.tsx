@@ -1,18 +1,31 @@
+import { onAuthStateChanged } from 'firebase/auth';
 import { useCallback, useEffect, useState } from 'react';
 import { AdminLoginModal } from './components/AdminLoginModal.tsx';
+import { CustomerAccountModal } from './components/CustomerAccountModal.tsx';
 import { FacebookInboxView } from './components/FacebookInboxView.tsx';
 import { OrderModal } from './components/OrderModal.tsx';
 import { OrdersView } from './components/OrdersView.tsx';
 import { OverviewView } from './components/OverviewView.tsx';
 import { PricingSettingsView } from './components/PricingSettingsView.tsx';
 import { OfflineIndicator } from './components/PWAInstallButton.tsx';
+import { SecuritySettingsView } from './components/SecuritySettingsView.tsx';
 import { Sidebar, type ActiveTab } from './components/Sidebar.tsx';
 import { TopBar } from './components/TopBar.tsx';
 import { WebsiteView } from './components/WebsiteView.tsx';
 import { WorkspaceView } from './components/WorkspaceView.tsx';
 import { DEFAULT_ESTIMATOR_PRICING, ORDER_STAGES } from './data/tools.ts';
+import {
+  auth,
+  saveUserQuoteRecord,
+  signInWithGoogleAccount,
+  signOutGoogleAccount,
+  subscribeUserQuotes,
+  syncUserProfileOnSignIn,
+  updateCustomerProfile,
+} from './firebase.ts';
 import type {
   AuthSessionStatus,
+  CustomerProfile,
   EstimatorPricingConfig,
   FacebookInquiry,
   FacebookStatusResponse,
@@ -20,6 +33,7 @@ import type {
   OrderStage,
   ProfileCategory,
   ToolId,
+  UserQuoteRecord,
   WorkshopOrder,
 } from './types.ts';
 
@@ -67,6 +81,14 @@ export default function App() {
   const [pricingConfig, setPricingConfig] = useState<EstimatorPricingConfig>(
     DEFAULT_ESTIMATOR_PRICING
   );
+
+  // Firebase Google Customer Auth State
+  const [googleProfile, setGoogleProfile] = useState<CustomerProfile | null>(null);
+  const [userQuotes, setUserQuotes] = useState<UserQuoteRecord[]>([]);
+  const [googleAuthLoading, setGoogleAuthLoading] = useState(false);
+  const [googleAuthError, setGoogleAuthError] = useState<string | null>(null);
+  const [accountModalOpen, setAccountModalOpen] = useState(false);
+  const [trackPrefillCode, setTrackPrefillCode] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [syncingFb, setSyncingFb] = useState(false);
@@ -234,6 +256,110 @@ export default function App() {
     };
   }, [getAuthHeaders, loadDashboardData]);
 
+  // Listen to Firebase Google Auth state and sync Firestore profile & saved quotes
+  useEffect(() => {
+    let unsubQuotes: (() => void) | null = null;
+    let mounted = true;
+
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      if (unsubQuotes) {
+        unsubQuotes();
+        unsubQuotes = null;
+      }
+
+      if (!user) {
+        if (mounted) {
+          setGoogleProfile(null);
+          setUserQuotes([]);
+        }
+        return;
+      }
+
+      try {
+        const profile = await syncUserProfileOnSignIn(user);
+        if (!mounted) return;
+        setGoogleProfile(profile);
+        setGoogleAuthError(null);
+
+        if (user.emailVerified) {
+          unsubQuotes = subscribeUserQuotes(
+            user.uid,
+            (quotes) => {
+              if (mounted) setUserQuotes(quotes);
+            },
+            () => {
+              // Structured error logged in firebase.ts
+            }
+          );
+        }
+      } catch {
+        if (mounted) {
+          setGoogleProfile({
+            uid: user.uid,
+            displayName: user.displayName || user.email?.split('@')[0] || 'عميل ماجدتال',
+            email: user.email || '',
+            photoURL: user.photoURL || undefined,
+          });
+        }
+      }
+    });
+
+    return () => {
+      mounted = false;
+      unsubAuth();
+      if (unsubQuotes) unsubQuotes();
+    };
+  }, []);
+
+  const handleGoogleSignIn = async () => {
+    setGoogleAuthLoading(true);
+    setGoogleAuthError(null);
+    try {
+      await signInWithGoogleAccount();
+    } catch (err) {
+      const code =
+        err && typeof err === 'object' && 'code' in err
+          ? String((err as { code?: string }).code)
+          : '';
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        setGoogleAuthError(null);
+      } else if (code === 'auth/popup-blocked') {
+        setGoogleAuthError(
+          'المتصفح منع نافذة تسجيل دخول جوجل المنبثقة. يرجى السماح بالنوافذ المنبثقة لهذا الموقع والمحاولة مجدداً.'
+        );
+      } else {
+        setGoogleAuthError('تعذر تسجيل الدخول بحساب جوجل حالياً، حاول مرة أخرى.');
+      }
+    } finally {
+      setGoogleAuthLoading(false);
+    }
+  };
+
+  const handleGoogleSignOut = async () => {
+    await signOutGoogleAccount();
+    setGoogleProfile(null);
+    setUserQuotes([]);
+  };
+
+  const handleSaveCustomerProfile = async (patch: {
+    displayName: string;
+    phone: string;
+    city: string;
+  }) => {
+    if (!googleProfile) return;
+    await updateCustomerProfile(googleProfile.uid, patch);
+    setGoogleProfile((prev) =>
+      prev
+        ? {
+            ...prev,
+            displayName: patch.displayName,
+            phone: patch.phone,
+            city: patch.city,
+          }
+        : null
+    );
+  };
+
   const handleSavePricing = async (nextConfig: EstimatorPricingConfig) => {
     const res = await fetch('/api/pricing', {
       method: 'PUT',
@@ -263,6 +389,76 @@ export default function App() {
       throw new Error(data.error || 'تعذر استعادة الأسعار الافتراضية');
     }
     setPricingConfig(data.pricing);
+  };
+
+  const handleChangeAdminPassword = async (payload: {
+    currentPassword: string;
+    newPassword: string;
+    confirmPassword: string;
+  }) => {
+    const res = await fetch('/api/auth/password', {
+      method: 'PUT',
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(payload),
+    });
+    const data = (await res.json()) as {
+      ok?: boolean;
+      token?: string;
+      usingDefaultPassword?: boolean;
+      passwordSource?: 'dashboard' | 'env' | 'default';
+      passwordUpdatedAt?: string | null;
+      persistentDbConfigured?: boolean;
+      error?: string;
+    };
+    if (!res.ok || !data.ok || !data.token) {
+      throw new Error(data.error || 'تعذر تغيير كلمة المرور');
+    }
+    try {
+      sessionStorage.setItem(TOKEN_STORAGE_KEY, data.token);
+    } catch {
+      // Cookie remains valid
+    }
+    setAuthToken(data.token);
+    setAuthStatus({
+      authenticated: true,
+      usingDefaultPassword: Boolean(data.usingDefaultPassword),
+      passwordSource: data.passwordSource || 'dashboard',
+      passwordUpdatedAt: data.passwordUpdatedAt ?? null,
+      persistentDbConfigured: Boolean(data.persistentDbConfigured),
+    });
+  };
+
+  const handleResetAdminPassword = async (currentPassword: string) => {
+    const res = await fetch('/api/auth/password/reset', {
+      method: 'POST',
+      headers: getAuthHeaders(true),
+      body: JSON.stringify({ currentPassword }),
+    });
+    const data = (await res.json()) as {
+      ok?: boolean;
+      token?: string;
+      usingDefaultPassword?: boolean;
+      passwordSource?: 'dashboard' | 'env' | 'default';
+      passwordUpdatedAt?: string | null;
+      persistentDbConfigured?: boolean;
+      error?: string;
+    };
+    if (!res.ok || !data.ok || !data.token) {
+      throw new Error(data.error || 'تعذر استعادة إعدادات كلمة المرور');
+    }
+    try {
+      sessionStorage.setItem(TOKEN_STORAGE_KEY, data.token);
+    } catch {
+      // Cookie remains valid
+    }
+    setAuthToken(data.token);
+    setAuthStatus({
+      authenticated: true,
+      usingDefaultPassword: Boolean(data.usingDefaultPassword),
+      passwordSource: data.passwordSource,
+      passwordUpdatedAt: data.passwordUpdatedAt ?? null,
+      persistentDbConfigured: Boolean(data.persistentDbConfigured),
+    });
   };
 
   const handleOpenTool = (toolId: ToolId) => {
@@ -426,6 +622,22 @@ export default function App() {
       throw new Error(data.error || 'تعذر حفظ الاستفسار');
     }
     setInquiries((prev) => [data.inquiry!, ...prev]);
+
+    // If customer is signed in with Google, persist a quote reference record in their Firestore account
+    if (googleProfile && auth.currentUser?.emailVerified && data.inquiry.referenceCode) {
+      try {
+        await saveUserQuoteRecord(googleProfile.uid, {
+          referenceCode: data.inquiry.referenceCode,
+          projectInterest: data.inquiry.projectInterest,
+          profileType: data.inquiry.profileType || payload.profileType || 'aluminum',
+          profileSystem: data.inquiry.profileSystem || payload.profileSystem,
+          summary: payload.initialMessage,
+        });
+      } catch {
+        // Primary workshop quote was already saved successfully
+      }
+    }
+
     return data.inquiry;
   };
 
@@ -518,15 +730,22 @@ export default function App() {
       ok?: boolean;
       token?: string;
       usingDefaultPassword?: boolean;
+      passwordSource?: 'dashboard' | 'env' | 'default';
+      passwordUpdatedAt?: string | null;
       persistentDbConfigured?: boolean;
       error?: string;
     };
 
     if (!res.ok || !data.ok || !data.token) {
-      if (typeof data.usingDefaultPassword === 'boolean') {
+      if (typeof data.usingDefaultPassword === 'boolean' || data.passwordSource) {
         setAuthStatus((prev) => ({
           authenticated: false,
-          usingDefaultPassword: data.usingDefaultPassword!,
+          usingDefaultPassword:
+            typeof data.usingDefaultPassword === 'boolean'
+              ? data.usingDefaultPassword
+              : prev?.usingDefaultPassword ?? false,
+          passwordSource: data.passwordSource ?? prev?.passwordSource,
+          passwordUpdatedAt: prev?.passwordUpdatedAt ?? null,
           persistentDbConfigured: prev?.persistentDbConfigured ?? false,
         }));
       }
@@ -542,6 +761,8 @@ export default function App() {
     setAuthStatus({
       authenticated: true,
       usingDefaultPassword: Boolean(data.usingDefaultPassword),
+      passwordSource: data.passwordSource,
+      passwordUpdatedAt: data.passwordUpdatedAt ?? null,
       persistentDbConfigured: Boolean(data.persistentDbConfigured),
     });
     setLoginModalOpen(false);
@@ -586,13 +807,31 @@ export default function App() {
           theme={theme}
           isAuthenticated={Boolean(authStatus?.authenticated)}
           pricingConfig={pricingConfig}
+          googleProfile={googleProfile}
+          googleAuthLoading={googleAuthLoading}
+          googleAuthError={googleAuthError}
+          userQuotesCount={userQuotes.length}
+          trackPrefillCode={trackPrefillCode}
+          onConsumeTrackPrefill={() => setTrackPrefillCode(null)}
+          onGoogleSignIn={handleGoogleSignIn}
+          onOpenCustomerAccount={() => setAccountModalOpen(true)}
           onToggleTheme={handleToggleTheme}
           onEnterDashboard={handleEnterDashboard}
           onSubmitQuoteRequest={handleCreateInquiry}
         />
+        <CustomerAccountModal
+          isOpen={accountModalOpen}
+          profile={googleProfile}
+          quotes={userQuotes}
+          onClose={() => setAccountModalOpen(false)}
+          onSaveProfile={handleSaveCustomerProfile}
+          onSignOut={handleGoogleSignOut}
+          onTrackReferenceCode={(code) => setTrackPrefillCode(code)}
+        />
         <AdminLoginModal
           isOpen={loginModalOpen}
           usingDefaultPassword={authStatus?.usingDefaultPassword}
+          passwordSource={authStatus?.passwordSource}
           onClose={() => {
             setLoginModalOpen(false);
             setPendingNav(null);
@@ -702,6 +941,15 @@ export default function App() {
                   pricingConfig={pricingConfig}
                   onSavePricing={handleSavePricing}
                   onResetPricing={handleResetPricing}
+                />
+              )}
+
+              {activeTab === 'security' && (
+                <SecuritySettingsView
+                  authStatus={authStatus}
+                  googleProfile={googleProfile}
+                  onChangePassword={handleChangeAdminPassword}
+                  onResetPasswordToEnv={handleResetAdminPassword}
                 />
               )}
             </>

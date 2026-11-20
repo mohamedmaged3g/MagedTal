@@ -1,0 +1,144 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated customer profile created when signing in with Google on the MagedTal website.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the user",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Customer display name",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified Google account email",
+          "minLength": 3,
+          "maxLength": 200
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "Google account avatar URL",
+          "maxLength": 600
+        },
+        "phone": {
+          "type": "string",
+          "description": "Optional customer phone number for workshop follow-up",
+          "maxLength": 32
+        },
+        "city": {
+          "type": "string",
+          "description": "Optional customer city or neighborhood",
+          "maxLength": 100
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when profile was created"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when profile was last updated"
+        }
+      },
+      "required": ["uid", "displayName", "email", "createdAt", "updatedAt"]
+    },
+    "UserQuoteRecord": {
+      "title": "UserQuoteRecord",
+      "description": "Saved quote request history item belonging to a signed-in customer.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "referenceCode": {
+          "type": "string",
+          "description": "Tracking reference code returned by the workshop server (e.g. MT-1001)",
+          "minLength": 3,
+          "maxLength": 32,
+          "pattern": "^[A-Z0-9_\\-]+$"
+        },
+        "projectInterest": {
+          "type": "string",
+          "description": "Selected project category",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "profileType": {
+          "type": "string",
+          "enum": ["aluminum", "upvc"],
+          "description": "Selected profile material category"
+        },
+        "profileSystem": {
+          "type": "string",
+          "description": "Optional selected profile brand/system",
+          "maxLength": 120
+        },
+        "summary": {
+          "type": "string",
+          "description": "Short dimensions or estimate summary",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when quote record was saved"
+        }
+      },
+      "required": ["uid", "referenceCode", "projectInterest", "profileType", "summary", "createdAt"]
+    },
+    "AdminMember": {
+      "title": "AdminMember",
+      "description": "Registry document granting Firestore admin permissions to a verified user UID.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 200
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private customer profile documents containing PII (email, phone, city), strictly restricted to owner or admin."
+    },
+    "/users/{userId}/quotes/{quoteId}": {
+      "schema": { "$ref": "#/entities/UserQuoteRecord" },
+      "description": "Customer's saved quote requests subcollection gated by parent user profile ownership."
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminMember" },
+      "description": "Protected admin membership documents readable/writable only by verified admins."
+    }
+  }
+}

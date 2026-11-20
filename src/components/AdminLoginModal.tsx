@@ -4,6 +4,7 @@ import { AlertTriangle, Eye, EyeOff, ShieldCheck, X } from 'lucide-react';
 interface AdminLoginModalProps {
   isOpen: boolean;
   usingDefaultPassword?: boolean;
+  passwordSource?: 'dashboard' | 'env' | 'default';
   onClose: () => void;
   onLogin: (password: string) => Promise<void>;
 }
@@ -11,6 +12,7 @@ interface AdminLoginModalProps {
 export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   isOpen,
   usingDefaultPassword,
+  passwordSource,
   onClose,
   onLogin,
 }) => {
@@ -166,21 +168,24 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
           <div className="flex items-start gap-2 p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
             <ShieldCheck className="w-4 h-4 text-blue-700 dark:text-blue-400 shrink-0 mt-0.5" />
             <span>
-              {usingDefaultPassword === false ? (
+              {passwordSource === 'dashboard' ? (
+                <>
+                  يتم التحقق باستخدام كلمة المرور التي قمت بتعيينها من داخل{' '}
+                  <strong>لوحة المدير &larr; الأمان وكلمة المرور</strong>.
+                </>
+              ) : usingDefaultPassword === false ? (
                 <>
                   كلمة المرور المفعّلة حالياً مأخوذة من متغير{' '}
                   <code className="font-mono text-slate-800 dark:text-slate-200">
                     ADMIN_PASSWORD
                   </code>{' '}
-                  في إعدادات البيئة (Secrets / Vercel) وليست كلمة المرور الافتراضية. يمكنك مراجعتها أو تحديثها من إعدادات المتغيرات البيئية.
+                  ويمكنك تغييرها بسهولة بعد الدخول من قسم{' '}
+                  <strong>الأمان وكلمة المرور</strong> داخل لوحة المدير.
                 </>
               ) : (
                 <>
-                  يتم التحقق عبر الخادم مع جلسة آمنة، ويمكنك تعيين أو تغيير كلمة المرور في أي وقت عبر متغير{' '}
-                  <code className="font-mono text-slate-800 dark:text-slate-200">
-                    ADMIN_PASSWORD
-                  </code>{' '}
-                  في إعدادات البيئة (Secrets / Vercel).
+                  يتم التحقق عبر الخادم مع جلسة آمنة، ويمكنك تغيير كلمة المرور في أي وقت مباشرة من داخل{' '}
+                  <strong>لوحة المدير &larr; الأمان وكلمة المرور</strong>.
                 </>
               )}
             </span>

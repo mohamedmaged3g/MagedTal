@@ -34,6 +34,9 @@ export const TopBar: React.FC<TopBarProps> = ({
   } else if (activeTab === 'pricing') {
     sectionTitle = 'أسعار المتر والحاسبة';
     detailTitle = 'تسعير أنواع الألومنيوم وUPVC والمطابخ';
+  } else if (activeTab === 'security') {
+    sectionTitle = 'الأمان وكلمة المرور';
+    detailTitle = 'التحكم في كلمة مرور المدير';
   }
 
   return (
